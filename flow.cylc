@@ -1,0 +1,117 @@
+#!jinja2
+{% set TASK_RUN_COMMAND = 'rose task-run --verbose' %}
+
+[scheduler]
+   UTC mode = True
+
+[scheduling]
+	#initial cycle point = next(T00) # start from midnight tonight 
+	initial cycle point = previous(T00) # start from midnight last night
+        
+    [[graph]]	
+        PT12H = """
+	        @wall_clock => archive_logs:finish => 
+                check_logs:fail? => sync_puma2_logs => untar_logs
+                """
+
+	P1D = """
+	      @wall_clock => archive_logs:finish => 
+              check_logs:fail? => sync_puma2_logs => untar_logs
+              check_logs? | untar_logs => process_logs
+
+              process_logs => concat_logs =>
+              plot_coupled => performance_stats => plot_wsypd => 
+              housekeeping 
+	      """
+	     
+    [[special tasks]]
+        clock-expire = LOGS(P1D), PROCESS(P1D), ANALYSIS(P1D), housekeeping(P1D) 
+
+[runtime]
+
+# Global settings 
+
+    [[root]]
+       init-script = """
+export CYLC_VERSION={{CYLC_VERSION}}
+export ROSE_VERSION={{ROSE_VERSION}}
+"""
+        script = {{TASK_RUN_COMMAND}}
+        env-script = "eval $(rose task-env)"
+        [[[events]]]
+            handlers = notify.py
+            handler events = submisison retry, submission failed, submission timeout, retry, failed, timeout
+        [[[environment]]]
+	    ARCHIVE_DIR = {{ARCHIVE_DIR}}
+	    DATA_DIR = {{DATA_DIR}}
+            PLOT_DIR = {{PLOT_DIR}}
+
+# Log archiving 
+
+    [[LOGS]]
+        [[[environment]]]
+            ROSE_TASK_APP = archive_logs	
+
+    # Rsync needs to run on login nodes
+    [[archive_logs]]
+	inherit = None, LOGS
+        platform = ln03_bg
+        pre-script = "module load gct"
+        execution retry delays = {{RETRIES}}
+        submission retry delays = {{RETRIES}}
+
+    [[check_logs]]
+	inherit = None, LOGS
+        platform = sci_bg
+
+    [[sync_puma2_logs]]
+	inherit = None, LOGS
+        platform = localhost
+
+    [[untar_logs]]
+	inherit = None, LOGS
+        platform = lotus
+	[[[directives]]]
+            --partition=short-serial 
+	    --time=3:00:00
+
+# Log processing
+
+    [[PROCESS]]
+	pre-script = "module load jaspy"
+        [[[environment]]]
+            ROSE_TASK_APP = process_logs    
+
+    [[concat_logs]]
+        inherit = None, PROCESS
+	platform = sci_bg
+
+    [[process_logs]]
+        inherit = None, PROCESS
+    	platform = lotus
+	[[[directives]]]
+            --partition=short-serial 
+	    --time=3:00:00
+
+# Analysis 
+
+    [[ANALYSIS]]
+	platform = sci5_bg
+	pre-script = "module load jaspy"
+        [[[environment]]]
+            ROSE_TASK_APP = analyse_data
+
+    [[plot_coupled]]
+	inherit = None, ANALYSIS
+
+    [[performance_stats]]	
+        inherit = None, ANALYSIS
+
+    [[plot_wsypd]]
+	inherit = None, ANALYSIS
+
+# Housekeeping
+
+    [[housekeeping]] 
+	platform = localhost
+

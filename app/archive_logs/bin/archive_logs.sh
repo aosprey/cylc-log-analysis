@@ -1,0 +1,62 @@
+#!/usr/bin/bash
+
+# Archive log directories to Jasmin.
+#
+# Based on suites listed in status CSV.
+# Use rsync which works well when synching a large number of small files.
+# Try and archive each suite in the list, but keep track of failures.
+# Then exit with success only if no errors occur.
+
+echo "Suite status: $SUITE_STATUS"
+echo "Archive dir: $ARCHIVE_DIR"
+echo "Remote host: $REMOTE_HOST"
+echo "Copy command: $COPY_CMD"
+
+# Check we can read suite status file
+if [ ! -f $SUITE_STATUS ]; then
+    echo "Error: Can't find suite status file: $SUITE_STATUS"
+    exit 1
+fi
+
+# Keep track of the number of failures
+err_count=0
+
+# Read status CSV columns 1, 2 and 6 (Suite id, User, Retrieve logs)
+while IFS="," read -r suite user retr
+do
+	
+    # Check if logs need to be retrieved
+    if [[ "$retr" == "True" ]];
+    then
+
+	# Check log dir exists
+	dir="/work/n02/n02/$user/cylc-run/$suite"
+	if [[ -d "$dir" ]];
+	then
+
+	    # Make sure target dir exists on Jamsin
+	    #ssh -n $REMOTE_HOST "mkdir -p $ARCHIVE_DIR/$suite"
+
+	    # Get current log directory
+	    cd $dir
+	    logdir=$(readlink log)
+
+	    # Transfer the files
+	    echo "Archiving $dir/$logdir/"
+	    $COPY_CMD $dir/$logdir/ $REMOTE_HOST:$ARCHIVE_DIR/$suite/$logdir || ((err_count+=1))
+
+        else
+	    echo "Error: $dir does not exist" >&2
+	    ((err_count+=1))
+	fi
+
+    fi
+done <  <(cut -d "," -f1,2,6 $SUITE_STATUS | tail -n +2)
+
+# Report status
+echo "Info: Failures in archiving $err_count suite log directories." >&2
+exit $err_count
+
+
+
+
