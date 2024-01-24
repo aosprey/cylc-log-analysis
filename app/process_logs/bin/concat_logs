@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 
+import os
 import pandas as pd
 
 
@@ -37,11 +38,9 @@ def read_logs(log_dir, suites, task):
 
     logs_df = pd.concat(logs_list, axis=0)
     return logs_df
-
-
-if __name__=="__main__":
-
-    import os
+    
+    
+def main(): 
 
     tasks = os.environ["TASKS"]
     suite_status_file = os.environ["SUITE_STATUS"]
@@ -56,6 +55,12 @@ if __name__=="__main__":
 
         out_file = '{}/{}_jobs.csv'.format(data_dir,task)
         concat_suite_logs(task, suite_status_file, proc_dir, out_file) 
+
+
+if __name__=="__main__":
+
+    main()
+
                       
 
     
