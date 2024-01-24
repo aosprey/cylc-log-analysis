@@ -46,7 +46,7 @@ do
             cylc_data_proc=${procdir}/${task}_cylc.csv
 
 	    get_cylc_times $logdir $task $cylc_data_raw 
-	    process_cylc_times.py $cylc_data_raw $cylc_data_proc
+	    process_cylc_times $cylc_data_raw $cylc_data_proc
 	done
 
     fi
