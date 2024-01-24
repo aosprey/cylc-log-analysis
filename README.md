@@ -33,17 +33,14 @@ The workflow looks like this:
               """
 ```
 
-### `archive_logs` app
+### `process_logs` app
 
 * `file/suite_status.csv`: Defines the suites to be archived/analysed. 
 * `archive_logs`: Rsyncs the `cylc-run/log` directories for each suite to a location on JASMIN gws.
 * `check_logs`: Since the A2 logs are purged by housekeeping, check if there are any missing cycles.
 * `sync_puma2_logs`: If gaps are identified, copy the tarred up job logs from puma2.
 * `untar_logs`: Untar the logs on Jasmin. 
-
-### `process_logs` app
-
-* `process_logs`: Identify new jobs, extract data, and add to a data file for each suite. For each job the code extracts the slurm batch id, submit time, run time, exit time and exit status. Then the run times and queue times for each job are derived.
+* `process_logs`: Identify new jobs, extract data, and add to a data file for each suite. For each job the code extracts the slurm batch id, submit time, run time, exit time and exit status. For pptransfer, the data size is also output. Then the run times and queue times for each job are derived.
 * `concat_logs`: Combine the data files for all suites into a single file for analysis.  
 
 ### `analyse_data` app
