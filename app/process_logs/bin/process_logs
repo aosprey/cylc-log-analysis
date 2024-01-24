@@ -3,49 +3,53 @@ set -e
 
 # Extract run times and submit times from cycle logs.
 # Can process all suites, or just suites where we are transferring logs. 
-# To do: catch error if can't read suite_status 
 
 echo "Process all: $PROCESS_ALL"
 echo "Archive dir: $ARCHIVE_DIR"
 echo "Data dir: $DATA_DIR"
 echo "Suite status: $SUITE_STATUS"
 echo "Tasks: $TASKS"
+echo "Process incrementally: $INCREMENTAL"
 
-. log_functions.sh
+# Check we can read suite status file
+if [ ! -f $SUITE_STATUS ]; then
+    echo "Error: Can't find suite status file: $SUITE_STATUS"
+    exit 1
+fi
 
 while IFS="," read -r suite process
 do
     if [[ "$PROCESS_ALL" == "True" || "$process" == "True" ]]
     then
-	logdir=$ARCHIVE_DIR/$suite
-	rawdir=${DATA_DIR}/raw/${suite}
-	procdir=${DATA_DIR}/processed/${suite}
+	log_dir=$ARCHIVE_DIR/$suite
+	raw_dir=${DATA_DIR}/raw/${suite}
+	proc_dir=${DATA_DIR}/processed/${suite}
     
 	# Check suite dir exists
-	if [[ ! -d $logdir ]]
+	if [[ ! -d $log_dir ]]
 	then
             continue
 	fi 
 
 	# Make output directories if they do not exist	  
-	if [[ ! -d "$rawdir" ]]; 
+	if [[ ! -d "$raw_dir" ]]; 
 	then 
-	    mkdir -p $rawdir
+	    mkdir -p $raw_dir
 	fi
 
-	if [[ ! -d "$procdir" ]]
+	if [[ ! -d "$proc_dir" ]]
 	then
-	    mkdir -p $procdir
+	    mkdir -p $proc_dir
 	fi
 
         for task in $TASKS
         do   
 	    echo "Processing $suite $task" 
 
-            cylc_data_raw=${rawdir}/${task}_cylc.csv
-            cylc_data_proc=${procdir}/${task}_cylc.csv
+            cylc_data_raw=${raw_dir}/${task}_cylc.csv
+            cylc_data_proc=${proc_dir}/${task}_cylc.csv
 
-	    get_cylc_times $logdir $task $cylc_data_raw 
+	    get_cylc_times $log_dir $task $cylc_data_raw $INCREMENTAL
 	    process_cylc_times $cylc_data_raw $cylc_data_proc
 	done
 

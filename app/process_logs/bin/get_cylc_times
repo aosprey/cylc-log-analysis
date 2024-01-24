@@ -1,0 +1,322 @@
+#!/usr/bin/bash 
+
+
+# Get the last cycle written in job data CSV. 
+# Globals used: 
+#   OUT_FILE 
+# Outputs: 
+#   last valid cycle in file 
+# Return: 
+#   1 if none found
+
+get_last_recorded_cycle() { 
+
+  # Check file exists 
+  if [[ ! -f $OUT_FILE ]]; then	 
+    return 1
+  fi 
+
+  # Check contains at least 2 lines
+  local len=$(wc -l $OUT_FILE | cut -f 1 -d ' ') 
+  if (( len < 2 )); then	
+    return 1 
+  fi 
+  
+  # Test last line 
+  check_cycle $len && return 0
+  
+  # Test 2nd to last line 
+  (( len = len-1 ))
+  check_cycle $len || return 1
+} 
+
+
+# Get first element of line N from file, 
+# and test if it is in the format expected for a cycle. 
+# Globals used: 
+#   OUT_FILE 
+# Inputs: 
+#   line number
+# Outputs: 
+#   cycle from line
+# Return: 
+#   1 if none found
+
+check_cycle() {
+  
+  local line=$1
+  local pattern='^[0-9]{8}T[0-9]{4}Z$'
+  
+  # Get first element of line
+  start=$(sed -n "${line}p" < $OUT_FILE | cut -f1 -d,)
+
+  if [[ $start =~ $pattern ]]; then 
+    echo $start 
+  else 
+    return 1 
+  fi 
+} 
+
+
+# Remove lines from log job data CSV file, starting from START.
+
+clear_last_cycle(){ 
+  
+   sed -i "/^$START/,\$d" $OUT_FILE
+} 
+
+
+# Return list of cycles in current dir, from start cycle if specified. 
+# Globals used: 
+#   START
+# Outputs: 
+#   list of cycles 
+
+get_cycles_to_process(){ 
+
+  local run="False"
+  
+  if [ -z $START ]; then  
+  
+    # If start not defined, just print all cycles 
+    for cycle in *; do 
+      echo $cycle 
+    done  
+       
+  else
+   	 
+    for cycle in *; do 
+      if [[ "$run" == "True" ]]; then 
+        echo $cycle 
+      elif [[ "$cycle" == "$START" ]]; then 
+        run="True"
+        echo $cycle 
+      fi 
+    done
+  fi
+} 
+
+
+# Reset cylc job status variables. 
+
+reset_job_variables(){ 
+
+  CYLC_BATCH_SYS_JOB_ID=""
+  CYLC_BATCH_SYS_JOB_SUBMIT_TIME=""
+  CYLC_JOB_INIT_TIME=""
+  CYLC_JOB_EXIT=""
+  CYLC_JOB_EXIT_TIME=""
+  data_size=""
+} 
+
+
+# Get data size for pptransfer tasks
+
+get_data_size(){ 
+
+  data_size=$(grep -Po 'Total \K.*?(?= Gb of data to transfer)' job.out)
+} 
+
+
+# Load vars from job.status file, and write to output file. 
+
+parse_job_status(){ 
+
+  while read -r line; do declare $line; done < job.status
+  write_job_data
+  
+} 
+
+
+# Get cylc job status variables from job-activity.log file. 
+
+parse_job_activity(){ 
+ 
+  # Find status line - should be the last one starting with [jobs-poll out]
+  local line=$(grep "\[jobs-poll out\]" job-activity.log | tail -1)
+
+  CYLC_BATCH_SYS_JOB_ID=$(echo $line | grep -Po '"batch_sys_job_id": "\K.*?(?=")')
+  CYLC_BATCH_SYS_JOB_SUBMIT_TIME=$(echo $line | grep -Po '"time_submit_exit": "\K.*?(?=")')
+  CYLC_JOB_INIT_TIME=$(echo $line | grep -Po '"time_run": "\K.*?(?=")')
+  CYLC_JOB_EXIT_TIME=$(echo $line | grep -Po '"time_run_exit": "\K.*?(?=")')
+  local run_status=$(echo $line | grep -Po '"run_status": \K.*?(?=,)')
+  
+  if [[ "$run_status" == "0" ]]; then 
+    CYLC_JOB_EXIT="SUCCEEDED"
+  else 
+    CYLC_JOB_EXIT=$(echo $line | grep -Po '"run_signal": "\K.*?(?=")')
+  fi
+  
+  write_job_data
+} 
+
+
+# Print header for cylc job data CSV file 
+
+write_data_header(){ 
+   
+  local data_header="Cycle,Rep,Batch id"
+  data_header+=",Submit time,Init time,Exit time,Exit status"  
+  if [[ "$TASK" == "pptransfer" ]]; then
+    data_header+=",Data size (Gb)"
+  fi 
+ 
+  echo $data_header > $OUT_FILE
+}
+   
+
+# Print data for cylc job to CSV file 
+
+write_job_data(){
+
+  local job_data="$cycle,$rep"
+  job_data+=",$CYLC_BATCH_SYS_JOB_ID,$CYLC_BATCH_SYS_JOB_SUBMIT_TIME"
+  job_data+=",$CYLC_JOB_INIT_TIME,$CYLC_JOB_EXIT_TIME,$CYLC_JOB_EXIT"
+  if [[ "$TASK" == "pptransfer" ]]; then
+    job_data+=",$data_size"
+  fi 
+
+  echo $job_data >> $OUT_FILE
+} 
+
+
+# Check command line args and set as global variables
+
+parse_args() {
+
+  if [ $# -ne 4	 ]; then
+    echo "$@"
+    echo "Error: Usage:" \
+         "suite log dir, task name, output CSV file, incremental" >&2
+    exit 1
+  fi 
+  
+  LOG_DIR=$1
+  TASK=$2
+  OUT_FILE=$3
+  INCR=$4
+  
+  if [ ! -d $LOG_DIR ]; then 
+    echo "Error: Log dir $LOG_DIR does not exist"
+    exit 1
+  fi
+  
+  if [[ "$INCR" != "True" && "$INCR" != "False" ]]; then 
+    echo "Error: Argument incremental should be True or False" >&2
+    exit 1
+  fi
+} 
+
+
+# If output CSV file exists, work out the last recorded cycle, 
+# and delete
+# If file does not exist, write header. 
+# Globals used: 
+#   OUT_FILE
+# Globals modified: 
+#   START
+# Files modified: 
+#   OUT_FILE 
+
+prepare_output_file() { 
+
+  if [[ "$INCR" == "True" ]]; then     
+    # Try to get last cycle in output file
+    START=$(get_last_recorded_cycle) || new_file="True"  
+    echo "Starting from $START"
+  else 
+    new_file="True"
+  fi 
+  
+  # Either i) Start new log data file 
+  if [[ "$new_file" == "True" ]]; then 
+    write_data_header
+  
+  # Or ii) Remove records from $START as we will re-process these
+  else 
+    clear_last_cycle
+  fi 
+} 
+
+
+# Loop over cycles in log directory (from START), get cylc job data and 
+# write to output file.  
+# Globals used: 
+#   LOG_DIR
+# Files modified: 
+#   OUT_FILE
+
+report_job_data() { 
+
+  cd $LOG_DIR
+  for log in log.*; do
+  
+    if [ ! -d $log/job ]; then 
+      echo "Warning: $PWD/$log/job does not exist" >&2
+      continue
+    fi
+    cd $log/job
+
+    # Work out which files to process
+    local cycles=$(get_cycles_to_process) 
+    
+    for cycle in $cycles; do
+
+      if [ ! -d $cycle/$TASK ]; then
+        continue
+      fi
+      cd $cycle/$TASK
+
+      # Look at all repeats including failures, ignoring NN
+      for rep in [0-9]*; do
+        cd $rep
+
+        reset_job_variables
+
+        # Get data size for pptransfer 
+        if [[ "$TASK" == "pptransfer" ]]; then
+          if [ -f job.out ]; then
+            get_data_size
+          fi
+        fi 
+
+        # Try job.status 
+        if [ -f job.status ]; then			
+          parse_job_status
+
+        # Try job-activity.log
+        elif [ -f job-activity.log ]; then
+          parse_job_activity
+    
+        else 
+          echo "Warning: $PWD: No job information" >&2
+          cd ../
+          continue
+        fi
+
+        cd ../
+      done			
+      cd ../../
+    done
+    cd ../../
+  done
+}
+
+
+# Get run data from all jobs from a cylc log directory for a specific task.    
+# Arguments: 
+#   job log dir, task name, output CSV file, incremental
+# Outputs: 
+#   Writes to output CSV file the following for each job: 
+#   batch id, submit time, start time, end time, exit status, and data size 
+#   for pptransfer. 
+
+main() {
+
+  parse_args "$@"
+  prepare_output_file
+  report_job_data   
+} 
+
+
+main "$@"
