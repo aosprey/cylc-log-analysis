@@ -170,13 +170,13 @@ def plot_runtime_xios_logs(logs, date_string, ms, plot_file):
         ax=ax, x='Init time', y='Elapsed time (h)', style='+', mew=1.5, ms=ms+1, color='purple')
 
 
-    # Plot XIOS logs off
+    # Plot XIOS logs off (Work only) 
 
-    logs_off_data = logs[~(logs['XIOS logs']) & (logs['Submit time'] > ref_date)]
+    logs_off_data = work_data[~(work_data['XIOS logs']) & (work_data['Submit time'] > ref_date)]
     
-    logs_off_data[work_data['Exit status']=='SUCCEEDED'].plot(
+    logs_off_data[logs_off_data['Exit status']=='SUCCEEDED'].plot(
         ax=ax, x='Init time', y='Elapsed time (h)', style='o', ms=ms, color='gold')
-    logs_off_data[work_data['Exit status']=='EXIT'].plot(
+    logs_off_data[logs_off_data['Exit status']=='EXIT'].plot(
         ax=ax, x='Init time', y='Elapsed time (h)', style='x', mew=1.5, ms=ms, color='tomato')
      
     # Annotate plot

@@ -16,20 +16,10 @@ parser.add_argument('output_file', help='Output file to store processed data')
 args = parser.parse_args()
 
 # Read data
-dt_cols = ['CYLC_BATCH_SYS_JOB_SUBMIT_TIME', 'CYLC_JOB_INIT_TIME', 'CYLC_JOB_EXIT_TIME']
-types = {'CYLC_BATCH_SYS_JOB_ID' : str}
-logs = pd.read_csv(args.input_file, index_col='CYLC_BATCH_SYS_JOB_ID', 
+dt_cols = ['Submit time', 'Init time', 'Exit time']
+types = {'Batch id' : str}
+logs = pd.read_csv(args.input_file, index_col='Batch id', 
                    dtype=types, parse_dates=dt_cols)
-
-# Rename column names 
-rename_cols = {'CYLC_BATCH_SYS_JOB_SUBMIT_TIME' : 'Submit time',
-               'CYLC_JOB_INIT_TIME' : 'Init time',
-               'CYLC_JOB_EXIT_TIME' : 'Exit time',
-               'CYLC_JOB_EXIT' : 'Exit status'}
-logs.rename(columns=rename_cols, inplace=True)
-
-index_name = 'Batch id'
-logs.index.name = index_name
 
 # Drop null batch ids 
 logs = logs[logs.index.notnull()]
