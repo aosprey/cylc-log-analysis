@@ -5,8 +5,9 @@
    UTC mode = True
 
 [scheduling]
-	#initial cycle point = next(T00) # start from midnight tonight 
-	initial cycle point = previous(T00) # start from midnight last night
+	initial cycle point = next(T00) # start from midnight tonight 
+	#initial cycle point = previous(T00) # start from midnight last night
+        runahead limit = P6
         
     [[graph]]	
         PT12H = """
@@ -38,6 +39,7 @@ export ROSE_VERSION={{ROSE_VERSION}}
 """
         script = {{TASK_RUN_COMMAND}}
         env-script = "eval $(rose task-env)"
+        submission retry delays = {{RETRIES}}
         [[[events]]]
             handlers = notify.py
             handler events = submisison retry, submission failed, submission timeout, retry, failed, timeout
