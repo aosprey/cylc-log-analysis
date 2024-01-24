@@ -52,7 +52,7 @@ export ROSE_VERSION={{ROSE_VERSION}}
 
     [[LOGS]]
         [[[environment]]]
-            ROSE_TASK_APP = archive_logs	
+            ROSE_TASK_APP = process_logs
 
     # Rsync needs to run on login nodes
     [[archive_logs]]

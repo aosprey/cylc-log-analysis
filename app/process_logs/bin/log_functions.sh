@@ -74,8 +74,12 @@ get_cylc_times() {
                     cd ../
 		    continue
 	        fi
-	    
-	        #write_job_data $out_file
+
+		# Get data size for pptransfer 
+		if [[ "$task_name" == "pptransfer"]]; then
+                    if [ -f job.out ]; then
+			
+		fi 
 
 	        cd ../
 	    done		    
