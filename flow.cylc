@@ -57,7 +57,7 @@ export ROSE_VERSION={{ROSE_VERSION}}
     # Rsync needs to run on login nodes
     [[archive_logs]]
 	inherit = None, LOGS
-        platform = ln03_bg
+        platform = ln02_bg
         pre-script = "module load gct"
         execution retry delays = {{RETRIES}}
         submission retry delays = {{RETRIES}}
