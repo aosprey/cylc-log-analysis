@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 
+import os
 import pandas as pd
 from matplotlib import pyplot as plt
 from datetime import datetime
@@ -26,9 +27,6 @@ def view_canari(suite_file='suite_perf.csv', plot_file='wsypd.png'):
 
 
 if __name__=="__main__":
-
-    DATA_DIR = '/gws/nopw/j04/canari/public/perf_analysis'
-    SUITE_FILE = DATA_DIR + '/DATA/suite_perf.csv'
-    PLOT_FILE = DATA_DIR + '/IMAGES/coupled_wsypd.png'
-    
-    view_canari(SUITE_FILE, PLOT_FILE)
+    stats_dir = os.environ.get('STATS_DIR', '/gws/nopw/j04/canari/public/perf_analysis/DATA')
+    plot_dir = os.environ.get('PLOT_DIR', '.') 
+    view_canari(stats_dir+'/suite_perf.csv', plot_dir+'/coupled_wsypd.png')
