@@ -9,7 +9,10 @@
 	#initial cycle point = previous(T00) # start from midnight last night
         runahead limit = P6
         
-    [[graph]]	
+    [[graph]]
+{% if TEST %}
+        R1 = "check_logs => plot_coupled => plot_pptransfer => performance_stats => plot_wsypd"
+{% else %}
         PT12H = """
 	        @wall_clock => archive_logs:finish => 
                 check_logs:fail? => sync_puma2_logs => untar_logs
@@ -21,9 +24,10 @@
               check_logs? | untar_logs => process_logs
 
               process_logs => concat_logs =>
-              plot_coupled => performance_stats => plot_wsypd => 
+              plot_coupled => plot_pptransfer => performance_stats => plot_wsypd => 
               housekeeping 
 	      """
+{% endif %}
 	     
     [[special tasks]]
         clock-expire = LOGS(P1D), PROCESS(P1D), ANALYSIS(P1D), housekeeping(P1D) 
@@ -105,6 +109,9 @@ export ROSE_VERSION={{ROSE_VERSION}}
 
     [[plot_coupled]]
 	inherit = None, ANALYSIS
+
+    [[plot_pptransfer]]
+	inherit = None, ANALYSIS    
 
     [[performance_stats]]	
         inherit = None, ANALYSIS
