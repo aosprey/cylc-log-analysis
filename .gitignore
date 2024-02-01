@@ -4,3 +4,6 @@
 *#
 *.swp
 .#*
+
+# Cylc alert script
+bin/notify.py
