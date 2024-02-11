@@ -9,22 +9,38 @@
 #   SUITE_STATUS, ARCHIVE_DIR, REPORT_DIR, REPORT_FILE 
 check_env_vars() { 
   if [[ ! -d $ARCHIVE_DIR ]]; then 
-    echo "Error: Archive dir $ARCHIVE_DIR does not exist"
+    echo "Error: Archive dir $ARCHIVE_DIR does not exist" >&2
     exit 99
   fi
   if [[ ! -d $REPORT_DIR ]]; then 
-    echo "Error: Report dir $REPORT_DIR does not exist"
+    echo "Error: Report dir $REPORT_DIR does not exist" >&2
     exit 99
   fi
   if [[ ! -f $SUITE_STATUS ]]; then 
-    echo "Error: Suite status file $SUITE_STATUS does not exist"
+    echo "Error: Suite status file $SUITE_STATUS does not exist" >&2
     exit 99
   fi
-
-  echo "Archive dir: $ARCHIVE_DIR"
+  echo "Archive dexitir: $ARCHIVE_DIR"
   echo "Report dir: $REPORT_DIR"
   echo "Report file: $REPORT_FILE"
   echo "Suite status: $SUITE_STATUS"
+} 
+
+# Check if we have started archiving logs for this suite. 
+# Globals used: 
+#   ARCHIVE_DIR, STATUS, SUITE 
+# Returns: 
+#   0 if suite is being achived; 1 otherwise
+check_archiving_suite() { 
+  if [[ "$STATUS" == "Preparing" ]]; then 
+    return 1
+  fi 
+  for dir in $ARCHIVE_DIR/$SUITE/log*; do 
+    if [[ -d $dir ]]; then 
+      return
+    fi
+  done
+  return 1 
 } 
 
 # Reset variables used in suite checking 
@@ -160,18 +176,15 @@ check_suite_logs() {
   
   # Loop through suite status file entries
   while IFS="," read -r SUITE STATUS CYCLE_LEN RUN_LEN START_CYCLE FINAL_CYCLE; do
-
-    #if [[ "$SUITE" == "u-db481" ]]; then 
-  
+    check_archiving_suite || continue
     echo "Processing $SUITE"
     reset_suite_vars
-   
+  
     ACTUAL_CYCLES=$(get_actual_cycles) 
     NUM_CYCLES=$(count_values $ACTUAL_CYCLES)	
     LAST_COMPLETED_CYCLE=$(get_last_value $ACTUAL_CYCLES)
     REF_CYCLES=$(get_ref_cycles)
     if [[ $? -eq 0 ]]; then 
-      #echo $REF_CYCLES
       MISSING_CYCLES=$(get_missing_cycles)
       NUM_MISSING_CYCLES=$(count_values $MISSING_CYCLES)
     else
@@ -180,8 +193,6 @@ check_suite_logs() {
            
     write_missing_cycles 
     write_suite_report
-    
-    #fi
   done < <(cut -d ',' -f1,5,8-11 $SUITE_STATUS | tail -n +2)
 } 
 
@@ -204,9 +215,13 @@ write_suite_report() {
 } 
 
 # Write number of suites with errors
-report_status() { 
-  echo "Info: Missing cycles in $ERR_COUNT suites." >&2
-  exit $ERR_COUNT
+error_report() { 
+  if [[ $ERR_COUNT -ne 0 ]]; then 
+    echo "Error: Missing cycles in $ERR_COUNT suites." >&2
+    exit $ERR_COUNT
+  else 
+    echo "Info: No suites with missing cycles."
+  fi
 } 
 
 # For each suite in status file ($SUITE_STATUS), report number of cycles 
@@ -223,7 +238,7 @@ main() {
   check_env_vars
   write_header
   check_suite_logs
-  report_status 
+  error_report
 } 
 
 main "$@"
