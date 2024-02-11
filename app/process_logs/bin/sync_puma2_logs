@@ -1,43 +1,110 @@
 #!/usr/bin/bash
 
-# Sync missing log cycle dirs from puma2.
-# Copies tarred up logs to Jasmin.
-# They need to be untarred in next step.
+# Check required env vars are set correctly
+# Globals used: 
+#   ARCHIVE_DIR, REPORT_DIR, REPORT_FILE, SCI_HOST, SUITE_STATUS
+check_env_vars() { 
+  if [[ ! -f $SUITE_STATUS ]]; then 
+    echo "Error: Suite status file $SUITE_STATUS does not exist" >&2
+    exit 99
+  fi
+  echo "Archive dir: $ARCHIVE_DIR"
+  echo "Report dir: $REPORT_DIR"
+  echo "Report file: $REPORT_FILE"
+  echo "Sci host: $SCI_HOST"
+  echo "Suite status: $SUITE_STATUS"
+}
 
-set -e
+# Clearout log report and missing file lists from previous iterations.
+clear_previous_runs() {
+  rm log_report.csv
+  rm *missing*
+} 
 
-echo "Suite status: $SUITE_STATUS"
-echo "Archive dir: $ARCHIVE_DIR"
-echo "Report dir: $REPORT_DIR"
-echo "Sci host: $SCI_HOST"
+# Copy log report and list of missing cycles from Jasmin. 
+# Globals used:
+#   REPORT_DIR, REPORT_FILE, SCI_HOST
+get_log_reports() {
+  scp $SCI_HOST:$REPORT_DIR/log_report.csv .
+  scp $SCI_HOST:$REPORT_DIR/*missing* .
+}
 
-# Pull in log reports 
-scp $SCI_HOST:$REPORT_DIR/log_report.csv . 
-scp $SCI_HOST:$REPORT_DIR/*missing* .
+# Try to find tarred job file for cycle. Look under all log.* dirs, 
+# there may be more than one file for a particular cycle (if run was
+# restarted). 
+# Globals used: 
+#   CYCLE, PUMA2_SUITE_DIR
+# Outputs: 
+#   Full path of job file(s) if found 
+# Returns: 
+#   1 if cycle not found. 
+locate_job_file() { 
+  if [[ ! -d $PUMA2_SUITE_DIR ]]; then 
+    echo "Error: Suite dir $PUMA2_SUITE_DIR not found" >&2
+    exit 1
+  fi 
+  cd $PUMA2_SUITE_DIR
+  
+  local files_found=0 
+  for log_dir in log.*; do 
+    local job_file=$PUMA2_SUITE_DIR/$log_dir/job-$CYCLE.tar.gz 
+    if [[ -f $job_file ]]; then 
+      echo $job_file
+      files_found+=1
+    fi 
+  done 
+  if [[ $files_found -eq 0 ]]; then 
+    echo "Error: Cycle $CYCLE not found in suite dir $PUMA2_SUITE_DIR" >&2
+    exit 1
+  fi 
+} 
 
-for file in u-*.txt
-do
-    
-    suite=$(echo $file | cut -c1-7) 
-    user=$(grep $suite $SUITE_STATUS | cut -d',' -f2)
+# Write report with number of job cycles not found. 
+error_report() {
+  if [[ $ERR_COUNT > 0 ]]; then  
+    echo "Error: Failed to find $ERR_COUNT cycles." >&2
+    exit $ERR_COUNT
+  fi 
+} 
 
-    puma2_log_dir=/home/n02/n02/$user/cylc-run/$suite/log
-    jasmin_dir=$ARCHIVE_DIR/$suite/
+# Loop through suite missing cycle files, find tarred job logs 
+# and copy to Jasmin. 
+# Globals used: 
+#   ARCHIVE_DIR, SCI_HOST, SUITE_STATUS
+sync_missing_cycles() { 
+  ERR_COUNT=0
+  
+  for file in u-*.txt; do 
+    local suite=$(echo $file | cut -c1-7) 
+    local user=$(grep $suite $SUITE_STATUS | cut -d',' -f2)
+    local jasmin_dir=$ARCHIVE_DIR/$suite/    
+    PUMA2_SUITE_DIR=/home/n02/n02/$user/cylc-run/$suite
 
-    job_files=''
-    for cycle in $(cat $file)
-    do 
-	job_file=$puma2_log_dir/job-$cycle.tar.gz
-
-	if [[ -f $job_file ]];
-	then 
-	    job_files+=$job_file' '
-	fi 
+    local job_files=""
+    for CYCLE in $(cat $file); do
+      job_files+=$(locate_job_file)" " || ERR_COUNT+=1
     done
-    
     echo "Syncing $suite"
-    scp $job_files sci5:$jasmin_dir
-    
-done
+    scp $job_files $SCI_HOST:$jasmin_dir  
+  done
+}
+
+# For each suite with missing files, look in log dir on puma2
+# and attempt to find tarred job files. Then copy to Jasmin log dir.
+# Globals used: 
+#   ARCHIVE_DIR, REPORT_DIR, REPORT_FILE , SCI_HOST, SUITE_STATUS
+# Files read: 
+#   SUITE_STATUS, REPORT_DIR/REPORT_FILE, REPORT_DIR/*missing*
+# Returns: 
+#   Error code equal to number of job cycle dirs not found.  
+main() {
+  check_env_vars
+  clear_previous_runs
+  get_log_reports
+  sync_missing_cycles
+  error_report
+} 
+
+main "$@"
 
 
