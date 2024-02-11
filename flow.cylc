@@ -5,9 +5,9 @@
    UTC mode = True
 
 [scheduling]
-	initial cycle point = next(T00) # start from midnight tonight 
-	#initial cycle point = previous(T00) # start from midnight last night
-        runahead limit = P6
+	#initial cycle point = next(T00) # start from midnight tonight 
+	initial cycle point = previous(T00) # start from midnight last night
+        runahead limit = P10D
         
     [[graph]]
 {% if TEST %}
