@@ -1,126 +1,231 @@
 #!/usr/bin/bash
-#
-# Report the number of cycles archived to Jasmin, and if there are gaps. 
-# Just checks for cycle directories. Doesn't check task statuses. 
-# Writes out missing cycles for each suite.
-# Returns error code equal to number of suites with missing cycles. 
 
-set -e
+# To do: Could use command-line args over env vars? 
+#        Probably some overlap with get_cylc_times functions
+#        Do we need set -e? 
 
-echo "Suite status: $SUITE_STATUS"
-echo "Archive dir: $ARCHIVE_DIR"
-echo "Report dir: $REPORT_DIR"
-echo "Report file: $REPORT_FILE"
+# Check required env vars are set correctly
+# Globals used: 
+#   SUITE_STATUS, ARCHIVE_DIR, REPORT_DIR, REPORT_FILE 
+check_env_vars() { 
+  if [[ ! -d $ARCHIVE_DIR ]]; then 
+    echo "Error: Archive dir $ARCHIVE_DIR does not exist"
+    exit 99
+  fi
+  if [[ ! -d $REPORT_DIR ]]; then 
+    echo "Error: Report dir $REPORT_DIR does not exist"
+    exit 99
+  fi
+  if [[ ! -f $SUITE_STATUS ]]; then 
+    echo "Error: Suite status file $SUITE_STATUS does not exist"
+    exit 99
+  fi
 
-# Check we can read suite status file
-if [ ! -f $SUITE_STATUS ]; then
-    echo "Error: Can't find suite status file: $SUITE_STATUS"
-    exit 1
-fi
+  echo "Archive dir: $ARCHIVE_DIR"
+  echo "Report dir: $REPORT_DIR"
+  echo "Report file: $REPORT_FILE"
+  echo "Suite status: $SUITE_STATUS"
+} 
 
-# Write header
-header="Suite id,Final cycle,Last completed cycle,"
-header+="Run length (cycles),Num cycle dirs,Missing cycles"
-echo $header > $REPORT_DIR/$REPORT_FILE
+# Reset variables used in suite checking 
+reset_suite_vars() { 
+  ACTUAL_CYCLES=""
+  NUM_CYCLES=""
+  LAST_COMPLETED_CYCLE=""
+  REF_CYCLES=""
+  MISSING_CYCLES=""
+  NUM_MISSING_CYCLES=""
+}
 
-# Keep track of the number of failures
-err_count=0
-
-# Loop through suite status file entries
-while IFS="," read -r suite status cycle_len run_len start_cycle final_cycle
-do
-
-    echo "Processing $suite"
+# Get cycles in suite log directory
+# Globals used:
+#   ARCHIVE_DIR, SUITE
+# Return: 
+#   List of unique, sorted, cycle directories. 
+get_actual_cycles() { 
+  local dirs=""
     
-    # Count cycle directories archived on Jasmin
-    dirs=""
-
-    # Reset vars
-    last_completed_cycle=""
-    num_cycles=""
-    num_missing_cycles=""
-    
-    # Check suite dir exists
-    if [[ -d $ARCHIVE_DIR/$suite ]];
-    then
-        cd $ARCHIVE_DIR/$suite
+  if [[ -d $ARCHIVE_DIR/$SUITE ]]; then
+     cd $ARCHIVE_DIR/$SUITE
 			
-        # Look in all log directories 
-        for log in log*
-        do 
-    	    if [[ -d $log/job ]]; 
-	    then 
-	        cd $log/job
-	        dirs+=$(\ls)' '
-	        cd ../../
-	    fi
-        done
+     # Look in all log directories 
+     for log in log*; do
+       if [[ -d $log/job ]]; then 
+	 cd $log/job
+	 dirs+=$(\ls)" "
+	 cd ../../
+       fi
+     done
 		
-        # Directories with cycle date format
-        cycle_dirs=$(echo $dirs | grep -Eo "[0-9]{8}T[0-9]{4}Z")
-    
-        # Remove duplicates and sort for comparison
-        actual_cycles=$(echo $cycle_dirs | tr ' ' '\n' | sort -u)
- 
-        num_cycles=$(echo $actual_cycles | wc -w)	
-        last_completed_cycle=$(echo $actual_cycles | awk '{print $NF}')
+     # Directories with cycle date format
+     local cycle_dirs=$(echo $dirs | grep -Eo "[0-9]{8}T[0-9]{4}Z")    
+     # Remove duplicates and sort for comparison
+     echo $cycle_dirs | tr ' ' '\n' | sort -u
+  fi
+}
 
-        # Only look at missing cycles for 3m cycling suites 	
-        if [[ "$cycle_len" -eq 90 ]];
-        then
+# *** This method is too slow when we have 100s of cycles***
+# Get cycles that should appear between first and last, given 
+# cycle length. 
+# Note: this uses rose date
+# Globals used: 
+#   START_CYCLE, LAST_COMPLETED_CYCLE, CYCLE_LEN
+# Returns: 
+#   List of cycles
+get_ref_cycles_rose() { 
+  export ROSE_CYCLING_MODE=360day
+  
+  # Work out how many cycles that should have completed
+  local completed_days=$(rose date $START_CYCLE $LAST_COMPLETED_CYCLE --print-format=d)
+  local completed_cycles=$((completed_days / CYCLE_LEN))
+  
+  # Work out what the cycles should be 
+  for ((i=0; i<=completed_cycles; i++)); do 
+    local offset=$((CYCLE_LEN*i))
+    rose date $START_CYCLE --offset=${offset}D
+  done 
+} 
 
-	    # Work out what cycles we should have
-    	    ref_cycles=''
+# Get cycles that should appear between first and last, given 
+# cycle length. Two cases will work: 90d and 30d cycles. 
+# Globals used: 
+#   START_CYCLE, LAST_COMPLETED_CYCLE, CYCLE_LEN
+# Returns: 
+#   List of cycles
+#   Error code 1 if cycle length  not supported
+get_ref_cycles() { 
+  local start_year=$(echo $START_CYCLE | cut -c1-4)
+  local end_year=$(echo $LAST_COMPLETED_CYCLE | cut -c1-4)
+  local years=$(seq $start_year $end_year)
+  if [[ "$CYCLE_LEN" -eq 90 ]]; then 
+    local months="01 04 07 10"
+  elif [[ "$CYCLE_LEN" -eq 30 ]]; then 
+    local months="01 02 03 04 05 06 07 08 09 10 11 12"
+  else 
+    return
+  fi 
+  
+  for year in $years; do 
+    for month in $months; do 
+      local cycle=$year$month'01T0000Z'
+      if [[ "$cycle" == "$LAST_COMPLETED_CYCLE" ]]; then
+        break 2
+      else
+	echo $cycle
+      fi 
+    done
+  done
+} 
 
-    	    start_year=$(echo $start_cycle | cut -c1-4)
-    	    end_year=$(echo $last_completed_cycle | cut -c1-4)
-    	    years=$(seq $start_year $end_year)
-    
-    	    for year in $years
-    	    do 
-	        for month in 01 04 07 10
-	        do
-    	    	    cycle=$year$month'01T0000Z'
-	    	    ref_cycles+=$cycle
-	
-	    	    if [[ "$cycle" == "$last_completed_cycle" ]]; 
-	    	    then
-		        break 2
-	    	    else  
-		        ref_cycles+=$'\n'
-	    	    fi
-	        done 
-    	    done
-	
-    	    # Compare actual against ref
-    	    missing_cycles=$(comm -23 <(echo "$ref_cycles") <(echo "$actual_cycles"))	
-	    num_missing_cycles=$(echo $missing_cycles | wc -w)
+# Return number of elements in a list. 
+count_values() { 
+  echo $#
+} 
 
-	    # Write missing cycles to file
-	    if [[ "$num_missing_cycles" -gt 0 ]];
-	    then
-	        ((err_count+=1))
-	        file=$REPORT_DIR/$suite'_missing.txt'
-	        echo "$missing_cycles" > $file 
-	    fi
-	
-        else 
-	    num_missing_cycles="X"
-        fi
+# Get the last element in a list 
+get_last_value() { 
+  echo "$@" | awk '{print $NF}'
+} 
+
+# Compare list of actual cycles to refernce cycles 
+# Globals used: 
+#   ACTUAL_CYCLES, REF_CYCLES 
+# Returns: 
+#   Values that appear in REF_CYCLES but not ACTUAL_CYCLES
+get_missing_cycles() { 
+  comm -23 <(echo "$REF_CYCLES") <(echo "$ACTUAL_CYCLES")
+} 
+
+# Write the missing cycles to a file. 
+# Globals used:
+#   NUM_MISSING_CYCLE, MISSING_CYCLES, REPORT_DIR, SUITE
+# Globals modified: 
+#   ERR_COUNT
+# Files modified: 
+#   $REPORT_DIR/$suite"_missing.txt"
+write_missing_cycles() {
+  if [[ "$NUM_MISSING_CYCLES" -gt 0 ]]; then
+    ((ERR_COUNT+=1))
+    echo "$MISSING_CYCLES" > $REPORT_DIR/$SUITE"_missing.txt"
+  fi
+} 
+
+# Loop through suites in $SUITE_STATUS file. 
+# Globals used: 
+#   SUITE_STATUS, ARCHIVE_DIR, REPORT_DIR, REPORT_FILE 
+# Files modified: 
+#   $REPORT_DIR/$REPORT_FILE
+check_suite_logs() { 
+  ERR_COUNT=0
+  
+  # Loop through suite status file entries
+  while IFS="," read -r SUITE STATUS CYCLE_LEN RUN_LEN START_CYCLE FINAL_CYCLE; do
+
+    #if [[ "$SUITE" == "u-db481" ]]; then 
+  
+    echo "Processing $SUITE"
+    reset_suite_vars
+   
+    ACTUAL_CYCLES=$(get_actual_cycles) 
+    NUM_CYCLES=$(count_values $ACTUAL_CYCLES)	
+    LAST_COMPLETED_CYCLE=$(get_last_value $ACTUAL_CYCLES)
+    REF_CYCLES=$(get_ref_cycles)
+    if [[ $? -eq 0 ]]; then 
+      #echo $REF_CYCLES
+      MISSING_CYCLES=$(get_missing_cycles)
+      NUM_MISSING_CYCLES=$(count_values $MISSING_CYCLES)
+    else
+      NUM_MISSING_CYCLES="X"
     fi
-	
-    # Report 
-    suite_report=$(echo $suite,$status,$final_cycle,$last_completed_cycle,)
-    suite_report+=$(echo $run_len,$num_cycles,$num_missing_cycles) 
-    echo $suite_report >> $REPORT_DIR/$REPORT_FILE
-	
-done < <(cut -d "," -f1,5,8-11 $SUITE_STATUS | tail -n +2)
+           
+    write_missing_cycles 
+    write_suite_report
+    
+    #fi
+  done < <(cut -d ',' -f1,5,8-11 $SUITE_STATUS | tail -n +2)
+} 
 
-# Report status
-echo "Info: Missing cycles in $err_count suites." >&2
-exit $err_count
+# Writes report file header
+# Globals used:
+#   REPORT_DIR, REPORT_FILE, ERR_COUNT
+# Files modified: 
+#   $REPORT_DIR/$REPORT_FILE
+write_header() { 
+  local header="Suite id,Status,Final cycle,Last completed cycle,"
+  header+="Run length (cycles),Num cycle dirs,Missing cycles"
+  echo $header > $REPORT_DIR/$REPORT_FILE
+} 
 
+# Write report line for current SUITE
+write_suite_report() { 
+  local suite_report=$(echo $SUITE,$STATUS,$FINAL_CYCLE,$LAST_COMPLETED_CYCLE,)
+  suite_report+=$(echo $RUN_LEN,$NUM_CYCLES,$NUM_MISSING_CYCLES) 
+  echo $suite_report >> $REPORT_DIR/$REPORT_FILE
+} 
 
+# Write number of suites with errors
+report_status() { 
+  echo "Info: Missing cycles in $ERR_COUNT suites." >&2
+  exit $ERR_COUNT
+} 
 
+# For each suite in status file ($SUITE_STATUS), report number of cycles 
+# archived in $ARCHIVE_DIR and whether there any gaps. 
+# Just checks for cycle directories. Doesn't check task entries. 
+# Globals read: 
+#   SUITE_STATUS, ARCHIVE_DIR, REPORT_DIR, REPORT_FILE
+# Outputs: 
+#   Writes a report file $REPORT_DIR/$REPORT_FILE
+#   If a suite has missing cycles, writes them to a file in $REPORT_DIR
+# Returns:
+#   Error code equal to number of suites with missing cycles.
+main() {
+  check_env_vars
+  write_header
+  check_suite_logs
+  report_status 
+} 
+
+main "$@"
 
 
