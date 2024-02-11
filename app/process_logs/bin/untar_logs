@@ -1,7 +1,8 @@
 #!/bin/bash 
 set -e
 
-# Untar job logs copied over from puma2, and delete the tar file. 
+# Untar job logs copied over from puma2, and delete the tar file.
+# To do: exit with 0 if no missing files.
 
 echo "Archive dir: $ARCHIVE_DIR"
 echo "Report dir: $REPORT_DIR"
