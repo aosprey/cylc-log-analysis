@@ -51,6 +51,7 @@ export ROSE_VERSION={{ROSE_VERSION}}
 	    ARCHIVE_DIR = {{ARCHIVE_DIR}}
 	    DATA_DIR = {{DATA_DIR}}
             PLOT_DIR = {{PLOT_DIR}}
+            STATS_DIR = {{STATS_DIR}}
 
 # Log archiving 
 
