@@ -42,7 +42,7 @@ class CylcJobData:
         else:
             self.data.to_csv(out_file)
 
-    def plot_status(self, plot_file, title, suites=None, mean=False, hlines=None):
+    def plot_status(self, plot_file, title, suites=None, mean=False, hlines=None, y_ticks=None):
         """Plot number of task successes and failures per day."""
         # Filter data by suites 
         if suites is not None: 
@@ -80,6 +80,8 @@ class CylcJobData:
         plt.legend(loc='upper left')
         ax.set_xlabel('Start date')
         ax.set_ylabel('Number of tasks')
+        if y_ticks is not None: 
+            ax.set_yticks(y_ticks)
         ax.set_title(title)
 
         plt.savefig(plot_file)   
