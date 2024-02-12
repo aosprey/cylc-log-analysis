@@ -42,7 +42,7 @@ class CylcJobData:
         else:
             self.data.to_csv(out_file)
 
-    def plot_status(self, plot_file, suites=None, mean=False, hlines=None):
+    def plot_status(self, plot_file, title, suites=None, mean=False, hlines=None):
         """Plot number of task successes and failures per day."""
         # Filter data by suites 
         if suites is not None: 
@@ -80,18 +80,24 @@ class CylcJobData:
         plt.legend(loc='upper left')
         ax.set_xlabel('Start date')
         ax.set_ylabel('Number of tasks')
-        ax.set_title('CANARI '+self.task_name+' task statuses each day')
+        ax.set_title(title)
 
         plt.savefig(plot_file)   
 
-    def plot_quantity(self, plot_file, x_col, y_col, x_label, y_label, data_label, title, 
-		      y_ticks=None, job_filter=None, mean=False, hlines=None):
-        """Plot some metric against time. Optionally add 7 day rolling mean."""        
+    def plot_quantity(self, plot_file, title, x_col, y_col, x_label, y_label, 
+                      data_label='', y_ticks=None, 
+		      job_filter=None, mean=False, hlines=None, status=False):
+        """Plot some metric against time. Note: can't plot status and mean together."""        
         # Filter 
         if job_filter is not None: 
             data = self.data[job_filter]
         else: 
             data = self.data 
+	    
+	# Split by status 
+        if status: 
+            succeeded_data = data[data['Exit status']=='SUCCEEDED']
+            failed_data = data[data['Exit status']=='EXIT']
 
         fig, ax = plt.subplots()
 
@@ -101,10 +107,14 @@ class CylcJobData:
                 plt.axhline(y=yval, color='black', linewidth=0.5, label='_')
  
         # Plot data 
-        data.plot(ax=ax, x=x_col, y=y_col, label=data_label, style='o', ms=2, color='deepskyblue') 
+        if status:
+            succeeded_data.plot(ax=ax, x=x_col, y=y_col, label='Successful jobs', style='o', ms=2, color='lawngreen') 
+            failed_data.plot(ax=ax, x=x_col, y=y_col, label='Failed jobs', style='o', ms=2, color='green') 
+        else: 
+            data.plot(ax=ax, x=x_col, y=y_col, label=data_label, style='o', ms=2, color='deepskyblue') 
  
         # Daily means 
-        if mean: 
+        if mean and not status: 
             mean_sypd_by_date = data.groupby(data[x_col].dt.date)[y_col].mean()
             dates = pd.date_range(mean_sypd_by_date.index[0], mean_sypd_by_date.index[-1])
             mean_sypd_by_date = mean_sypd_by_date.reindex(dates, fill_value=pd.NA) 
@@ -168,7 +178,7 @@ class CoupledData(CylcJobData):
             successful_jobs = (self.data['Suite id'] == suite) & (self.data['Exit status'] == 'SUCCEEDED')
             self.data.loc[successful_jobs, 'SYPD'] = 86400.0 / (self.data.loc[successful_jobs, 'Elapsed time (s)']*cycles_per_year)
 
-    def plot_runtime(self, plot_file, suites=None, date_string='2023-03-01', ms=2, xios_logs=False): 
+    def plot_runtime_filesystem(self, plot_file, title, suites=None, date_string='2023-03-01', ms=2, xios_logs=False): 
         """Plot time to completion for successful tasks. 
         Organise by file system and optionally whether XIOS writing logs."""
         # Filter data by suites 
@@ -227,37 +237,49 @@ class CoupledData(CylcJobData):
                        bbox_to_anchor=(0.1, 1.01, 1, 0.1), loc="lower left")
         ax.set_xlabel('Start time')
         ax.set_ylabel('Time to completion (h)')
-        title='CANARI coupled task run times since {}'.format(date_string)
         plt.title(title, y=1.25) 
 
         plt.savefig(plot_file)
 
-    def plot_queue_time(self, plot_file, suites=None, mean=False, hlines=None):
+    def plot_queue_time(self, plot_file, title, suites=None, mean=False, hlines=None):
         """Plot queue time for all jobs."""
         if suites is not None: 
             job_filter = self.data['Suite id'].isin(suites)
         else:
             job_filter = None
 	    
-        self.plot_quantity(plot_file=plot_file, 
+        self.plot_quantity(plot_file=plot_file, title=title, 
                            x_col='Submit time', y_col='Queued time (h)', 
 			   x_label='Submission time', y_label='Queue time (h)', 
 	                   data_label='Queue time per job', 
-			   title='CANARI coupled task queue times', 
 		           job_filter=job_filter, mean=mean, hlines=hlines)
 
-    def plot_sypd(self, plot_file, suites=None, mean=False, hlines=None):
+    def plot_sypd(self, plot_file, title, suites=None, mean=False, hlines=None, y_ticks=None):
         """Plot SYPD for successful tasks."""
         if suites is not None: 
             job_filter = self.data['Suite id'].isin(suites)
         else: 
             job_filter = None
 
-        self.plot_quantity(plot_file=plot_file, 
+        self.plot_quantity(plot_file=plot_file, title=title, 
 	                   x_col='Init time', y_col='SYPD', x_label='Start time', y_label='SYPD', 
-	                   data_label='SYPD per job', title='CANARI SYPD for successful coupled tasks', 
-		           y_ticks=np.arange(0.6,2.6,0.2), 
-		           job_filter=job_filter, mean=mean, hlines=hlines)
+	                   data_label='SYPD per job', y_ticks=y_ticks, 
+			   job_filter=job_filter, mean=mean, hlines=hlines)
+			   
+    def plot_runtime(self, plot_file, title, suites=None, mean=False, hlines=None, y_ticks=None, status=False):
+        """Plot run time. If status specified plot succeeded and failed jobs, otherwise just succeede ones."""
+        if suites is not None: 
+            job_filter = self.data['Suite id'].isin(suites)
+        else: 
+            job_filter = [True]*len(self.data.index)
+        if not status: 
+            job_filter = job_filter & (self.data['Exit status']=='SUCCEEDED')
+            
+        self.plot_quantity(plot_file=plot_file, title=title, 
+	                   x_col='Init time', y_col='Elapsed time (h)', 
+			   x_label='Start time', y_label='Time to completion (h)', 
+	                   data_label='Run time per job', y_ticks=y_ticks, 
+			   job_filter=job_filter, mean=mean, hlines=hlines, status=status)
 		
 
 class PPTransferData(CylcJobData): 
@@ -282,16 +304,15 @@ class PPTransferData(CylcJobData):
         self.data.loc[valid_jobs,'Speed (MB/s)'] = (self.data.loc[valid_jobs,'Data size (GB)'] * 1024 /
                                                   self.data.loc[valid_jobs,'Elapsed time (s)'])
 
-    def plot_speed(self, plot_file, suites=None, mean=False, hlines=None): 
+    def plot_speed(self, plot_file, title, suites=None, mean=False, hlines=None): 
         """Plot transfer speed."""
         if suites is not None: 
             job_filter = self.data['Suite id'].isin(suites) 
         else: 
             job_filter = None 
 
-        self.plot_quantity(plot_file=plot_file, 
+        self.plot_quantity(plot_file=plot_file, title=title, 
                            x_col='Init time', y_col='Speed (MB/s)', 
                            x_label='Start time', y_label='Transfer speed (MB/s)', 
                            data_label='Speed of transfer job (MB/s)', 
-                           title='CANARI speed of successful pptransfer tasks', 
                            job_filter=job_filter, mean=mean, hlines=hlines)

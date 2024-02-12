@@ -17,8 +17,16 @@ def generate_plots(data_dir='.', plot_dir='.'):
 
     # Plots 
     setup_plots()
-    pptransfer.plot_status(plot_dir+'/pptransfer_status.png', mean=True, hlines=[50,100,150,200])
-    pptransfer.plot_speed(plot_dir+'/pptransfer_speed.png', mean=True, hlines=[50,100,150,200])
+    pptransfer.plot_status(
+        plot_file=plot_dir+'/pptransfer_status.png', 
+        title='CANARI transfer task statuses each day', 
+	mean=True, 
+	hlines=[50,100,150,200])
+    pptransfer.plot_speed(
+        plot_file=plot_dir+'/pptransfer_speed.png', 
+	title='CANARI speed of successful transfer tasks', 
+	mean=True, 
+	hlines=[50,100,150,200])
 
 if __name__=="__main__": 
     data_dir = os.environ.get('DATA_DIR', '/gws/nopw/j04/canari/users/aosprey/log-analysis/data')
