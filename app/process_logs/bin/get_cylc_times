@@ -123,7 +123,7 @@ write_data_header(){
   local data_header="Cycle,Rep,Batch id"
   data_header+=",Submit time,Init time,Exit time,Exit status"  
   if [[ "$TASK" == "pptransfer" ]]; then
-    data_header+=",Data size (Gb)"
+    data_header+=",Data size (GB)"
   fi 
   echo $data_header > $OUT_FILE
 }  
