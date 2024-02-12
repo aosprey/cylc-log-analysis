@@ -11,7 +11,10 @@
         
     [[graph]]
 {% if TEST %}
-        R1 = "check_logs => plot_coupled => plot_pptransfer => performance_stats => plot_wsypd"
+        R1 = """
+             archive_logs => check_logs:fail? => sync_puma2_logs => untar_logs
+             check_logs? | untar_logs => process_logs => concat_logs
+             """
 {% else %}
         PT12H = """
 	        @wall_clock => archive_logs:finish => 
@@ -97,7 +100,7 @@ export ROSE_VERSION={{ROSE_VERSION}}
         inherit = None, PROCESS
     	platform = lotus
 	[[[directives]]]
-            --partition=short-serial 
+            --partition=short-serial
 	    --time=3:00:00
 
 # Analysis 
