@@ -1,5 +1,5 @@
 Suite id,User,Description,Production,Status,Retrieve logs,Process logs,Cycle length (days),Run length (cycles),First cycle,Final cycle,Start time,File system,First NVMe cycle,XIOS logs,First no log cycle
-u-cs488,annette,control-1950 (error),False,Abandoned,False,True,30,155,19500101T0000Z,19621101T0000Z,2023-03-14T15:44:48Z,Work,,True,
+u-cs488,annette,control-1950 (error),False,Abandoned,False,False,30,155,19500101T0000Z,19621101T0000Z,2023-03-14T15:44:48Z,Work,,True,
 u-cx749,annette,control-1950,True,Running,True,True,30,1200,19500101T0000Z,20490101T0000Z,2023-08-24T15:35:34Z,Work,,False,19710801T0000Z
 u-cz963,annette,highres-future (SSP585),False,Running,True,True,30,360,20150101T0000Z,20441201T0000Z,2023-09-26T20:07:18Z,Work,,False,20280801T0000Z
 u-db658,annette,hist-1950,True,Running,True,True,30,780,19500101T0000Z,20141001T0000Z,2024-02-09T15:43:49Z,Work,,False,19500101T0000Z

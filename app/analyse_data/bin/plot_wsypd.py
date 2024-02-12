@@ -14,7 +14,7 @@ def view_canari(suite_file='suite_perf.csv', plot_file='wsypd.png'):
     nyears = int(data['Run progress (years)'].sum())
     date = datetime.today().strftime('%Y-%b-%d')
     ax=data.plot.scatter('SYPD','ASYPD')
-    ax.set_title(f"CANARI speeds as of {date}\n(Red star is average for {nyears} simulated years)")
+    ax.set_title(f"EPOC speeds as of {date}\n(Red star is average for {nyears} simulated years)")
 
     # get weighted average of speeds (weighted by years per simulation)
     data['WSYPD'] = data['SYPD']*data['Run progress (years)']
@@ -27,6 +27,6 @@ def view_canari(suite_file='suite_perf.csv', plot_file='wsypd.png'):
 
 
 if __name__=="__main__":
-    stats_dir = os.environ.get('STATS_DIR', '/gws/nopw/j04/canari/public/perf_analysis/DATA')
+    stats_dir = os.environ.get('STATS_DIR', '/gws/nopw/j04/epoc/public/perf_analysis/DATA')
     plot_dir = os.environ.get('PLOT_DIR', '.') 
     view_canari(stats_dir+'/suite_perf.csv', plot_dir+'/coupled_wsypd.png')
