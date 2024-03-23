@@ -21,12 +21,15 @@ def main():
     logs = pd.read_csv(args.input_file, index_col='Batch id',
                        dtype=types, parse_dates=dt_cols)
 
-    # Drop null batch ids 
-    logs = logs[logs.index.notnull()]
+    # Check there is data in the file 
+    if len(logs.index) > 0: 
 
-    # Derive queue time and run time 
-    logs['Queued time (s)'] = ( logs['Init time']-logs['Submit time'] ).dt.total_seconds()
-    logs['Elapsed time (s)'] = ( logs['Exit time']-logs['Init time'] ).dt.total_seconds()
+        # Drop null batch ids 
+        logs = logs[logs.index.notnull()]
+
+        # Derive queue time and run time 
+        logs['Queued time (s)'] = ( logs['Init time']-logs['Submit time'] ).dt.total_seconds()
+        logs['Elapsed time (s)'] = ( logs['Exit time']-logs['Init time'] ).dt.total_seconds()
 
     # Write data
     logs.to_csv(args.output_file)
