@@ -30,7 +30,7 @@ do
     then
 
 	# Check log dir exists
-	dir="/work/n02/n02/$user/cylc-run/$suite"
+	dir="/home/n02/n02/$user/cylc-run/$suite"
 	if [[ -d "$dir" ]];
 	then
 
