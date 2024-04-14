@@ -50,7 +50,7 @@ The workflow looks like this:
   * run time
   * status (how many jobs succeeded and failed each day)
   * speed (in SYPD) 
-* `performance_statys`: calculate metrics for each suite:
+* `performance_stats`: calculate metrics for each suite:
   * the run progress in simulated years
   * the speed of the model in simulated years per day (SYPD)
   * the speed of the workflow as a whole in actual simulated years per day (ASYPD)
