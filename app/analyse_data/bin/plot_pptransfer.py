@@ -16,8 +16,7 @@ def generate_plots(data_dir='.', plot_dir='.'):
     pptransfer.calc_metrics()
 
     # Plots 
-    setup_plots()
-    pptransfer.plot_status(
+    pptransfer.plot_daily_status(
         plot_file=plot_dir+'/pptransfer_status.png', 
         title='CANARI transfer task statuses each day', 
 	mean=True, 

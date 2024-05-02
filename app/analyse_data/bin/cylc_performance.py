@@ -1,16 +1,78 @@
 """Code for analysing and plotting data from cylc job logs stored in a CSV file.""" 
 
+import os
 import numpy as np
 import pandas as pd 
 from pandas.tseries.offsets import DateOffset
 import matplotlib.pyplot as plt
 
-def setup_plots(): 
-    """Set plotting parameters"""
+# Default plot colours and data labels - can be overwritten in calling code. 
+keys = ['data', 'fail', 'mean', 
+        'disk', 'disk_succ', 'disk_fail', 
+	'logs_off', 'logs_off_succ', 'logs_off_fail', 
+	'nvme', 'nvme_succ', 'nvme_fail', 
+	'sypd', 'asypd_cycle', 'asypd'] 
+color_vals = ['deepskyblue', 'red', 'navy',
+              'lawngreen', 'lawngreen', 'green', 
+              'gold', 'gold', 'tomato', 
+	      'magenta', 'magenta', 'purple', 
+	      'blue', 'orange', 'green'] 
+label_vals = ['Successful jobs', 'Failed jobs', 'Rolling 7 day mean', 
+              'Disk', 'Succeeded Disk', 'Failed Disk',
+              'XIOS logs off', 'Succeeded XIOS logs off', 'Failed XIOS logs off',
+              'NVMe', 'Succeeded NVMe', 'Failed NVMe', 
+	      'SYPD (rolling 7 day mean)', 'ASYPD per cycle (rolling 7 day mean)', 'ASYPD since start']
+colors = dict(zip(keys, color_vals))
+labels = dict(zip(keys, label_vals))
+
+
+class JobPlot:
 
     plt.rcParams['font.size'] = '12'
     plt.rcParams['figure.figsize'] = (12,6)
 
+    def __init__(self):
+        fig, ax = plt.subplots()
+        self.fig = fig 
+        self.ax = ax
+    
+    def hlines(self, hlines):
+        """Plot horizontal grid lines (if defined), usually call before plotting data."""
+        if hlines is not None:
+            for yval in hlines: 
+                plt.axhline(y=yval, color='gray', linewidth=0.5, label='_')
+
+    def annotate(self, x_label, y_label, title, y_ticks=None, 
+                 legend_above=False, legend_loc="upper left", legend_cols=2, legend_rows=1): 
+        """Add plot legend, title, axes titles, y_ticks."""
+        if legend_above: 
+            box = self.ax.get_position()
+            if legend_rows == 1: 
+                scale = 0.9
+                title_pos = 1.15
+            else: 
+                scale = 0.85 
+                title_pos = 1.25
+            self.ax.set_position([box.x0, box.y0, box.width, box.height * scale])
+            plt.legend(markerscale=1.2, ncol=legend_cols,
+                       bbox_to_anchor=(0, 1.01, 1, 0.1), loc="lower left")
+        else:
+            plt.legend(loc=legend_loc)
+            title_pos=1
+	
+        self.ax.set_xlabel(x_label)
+        self.ax.set_ylabel(y_label)
+        if y_ticks is not None: 
+            self.ax.set_yticks(y_ticks)
+        if title_pos is not None: 
+            self.ax.set_title(title, y=title_pos)
+        else: 
+            self.ax.set_title(title)
+
+    def save(self, plot_file):
+        """Save plot."""
+        plt.savefig(plot_file)
+      
 
 class SuiteStatus: 
     """Suite status data"""
@@ -41,18 +103,106 @@ class CylcJobData:
             self.data.to_csv(out_file, columns=cols) 
         else:
             self.data.to_csv(out_file)
-
-    def plot_status(self, plot_file, title, suites=None, mean=False, hlines=None, y_ticks=None):
-        """Plot number of task successes and failures per day."""
-        # Filter data by suites 
+        
+    def _filter_jobs(self, job_filter=None, suites=None): 
+        """Return jobs matching filter in list of suites."""
         if suites is not None: 
             data = self.data[self.data['Suite id'].isin(suites)]
+        else: 
+            data = self.data
+        if job_filter is not None: 
+            return data.loc[job_filter]
+        else: 
+            return data
+
+    def _plot_data(self, ax, x_col, y_col, ms=2, line=False, key='data', key_fail='fail', data_label=None, 
+                   status=False, job_filter=None, suites=None):
+        """Plot data. Default is to use symbols. 
+	   Options: filter data by job and suites,
+	            key in global colors and labels, 
+		    plot by job status (success and failures), 
+		    line plot (not with status)
+		    string for label (not with status)."""
+        data = self._filter_jobs(job_filter, suites)
+        if status: 
+            data[data['Exit status']=='SUCCEEDED'].plot(
+            ax=ax, x=x_col, y=y_col, style='o', ms=ms, color=colors[key], label=labels[key])
+            data[data['Exit status']=='EXIT'].plot(
+            ax=ax, x=x_col, y=y_col, style='x', ms=ms, color=colors[key_fail], label=labels[key_fail])
+        else: 
+            if data_label is not None: 
+                label = data_label 
+            else: 
+                label = labels[key]
+            if line: 
+                data.plot(ax=ax, x=x_col, y=y_col, color=colors[key], label=label)	    
+            else: 
+                data.plot(ax=ax, x=x_col, y=y_col, style='o', ms=ms, color=colors[key], label=label)
+
+#    def _plot_rolling_mean(self, ax, x_col, y_col, key='mean', job_filter=None, suites=None): 
+#        """Plot 7 day rolling mean."""
+#        data = self._filter_jobs(job_filter, suites)
+#        data = data[[x_col, y_col]].dropna()
+#        data.sort_values(x_col, inplace=True)
+#        rolling_mean = data.rolling('7D', min_periods=10, center=True, on=x_col).mean()
+#        rolling_mean.plot(ax=ax, x=x_col, y=y_col, color=colors[key], label=labels[key])
+
+    def _plot_rolling_mean(self, ax, x_col, y_col, key='mean', job_filter=None, suites=None): 
+         """Plot 7 day rolling mean."""   
+         # Group data by day and reindex, so any days with no data show up as missing data. 
+         data = self._filter_jobs(job_filter, suites)
+         mean_sypd_by_date = data.groupby(data[x_col].dt.date)[y_col].mean()
+         dates = pd.date_range(mean_sypd_by_date.index[0], mean_sypd_by_date.index[-1])
+         mean_sypd_by_date = mean_sypd_by_date.reindex(dates, fill_value=pd.NA) 
+         mean_sypd_by_date.index = mean_sypd_by_date.index.tz_localize('UTC')
+         mean_sypd_by_date.index = mean_sypd_by_date.index + DateOffset(hours=12)
+         
+         rolling_mean = mean_sypd_by_date.rolling(7, min_periods=3, center=True).mean()
+         rolling_mean.plot(ax=ax, x=x_col, y=y_col, color=colors[key], label=labels[key])
+	        
+    def plot_quantity(self, plot_file, title, x_col, y_col, x_label, y_label, 
+                      data_label='', y_ticks=None, mean=False, hlines=None, status=False, 
+                      job_filter=None, suites=None):
+        """Plot some metric against time. Note: can't plot status and mean together."""  
+        plot = JobPlot()
+        plot.hlines(hlines)
+	
+        self._plot_data(plot.ax,  x_col, y_col, key='data', key_fail='fail', data_label=data_label, 
+	                status=status, job_filter=job_filter, suites=suites) 
+        legend_cols = 2
+        if status:     
+            legend_rows = 2
         else:
-            data = self.data 
+            legend_rows = 1
+            if mean: 
+                job_filter = self.data['Exit status']=='SUCCEEDED'
+                self._plot_rolling_mean(plot.ax, x_col, y_col, job_filter=job_filter, suites=suites)                          
+                legend_cols = 3	
+			
+        plot.annotate(x_label, y_label, title, y_ticks=y_ticks, 
+	              legend_above=True, legend_cols=legend_cols, legend_rows=legend_rows)
+        plot.save(plot_file)
+    
+    def plot_quantity_suites(self, plot_file, title, x_col, y_col, x_label, y_label, 
+                            y_ticks=None, hlines=None, job_filter=None, suites=None, ignore_rows=0):
+        """Plot some metric against time, with different lines for each suite."""
+        data = self._filter_jobs(job_filter, suites)
+        plot = JobPlot()
+        plot.hlines(hlines)
+
+        for suite in self.suite_status.suites:
+            suite_data = data[data['Suite id'] == suite][ignore_rows:]
+            suite_data.plot(ax=plot.ax, x=x_col, y=y_col, label=suite) 
         
+        plot.annotate(x_label, y_label, title, y_ticks=y_ticks, legend_loc='lower left')
+        plot.save(plot_file)
+                              
+    def plot_daily_status(self, plot_file, title, suites=None, mean=False, hlines=None, y_ticks=None):
+        """Plot number of task successes and failures per day."""  
+        data = self._filter_jobs(suites=suites)
+    
         # Group by exit status 
         status_by_date = data.groupby(data['Init time'].dt.date)['Exit status'].value_counts()
-
         # Reindex and fill with 0 for dates with no data
         dates = pd.date_range(status_by_date.index.get_level_values(0)[0], 
                           status_by_date.index.get_level_values(0)[-1])
@@ -60,85 +210,20 @@ class CylcJobData:
                                                names = ["Init time", "Exit status"])
         status_by_date = status_by_date.reindex(new_index, fill_value=0)
 
-        fig, ax = plt.subplots()
-
-        # Plot horizontal lines underneath
-        if hlines is not None: 
-            for yval in hlines: 
-                plt.axhline(y=yval, color='black', linewidth=0.5, label='_')
+        plot = JobPlot()
+        plot.hlines(hlines)
 
         data = status_by_date.xs("SUCCEEDED", level="Exit status")
-        data.plot(ax=ax, x='Init time', y='count', color='deepskyblue', label='Succeeded')
-
+        data.plot(ax=plot.ax, x='Init time', y='count', color='deepskyblue', label='Succeeded')
         if mean: 
             rolling_mean = data.rolling(7, min_periods=1, center=True).mean()
-            rolling_mean.plot(ax=ax, x='Init time', y='count', color='navy', label='Succeeded (rolling 7 day mean)')
-
+            rolling_mean.plot(ax=plot.ax, x='Init time', y='count', color='navy', label='Succeeded (rolling 7 day mean)')
         data = status_by_date.xs("EXIT", level="Exit status")
-        data.plot(ax=ax, x='Init time', y='count', color='red', label='Failed')
+        data.plot(ax=plot.ax, x='Init time', y='count', color='red', label='Failed')
 
-        plt.legend(loc='upper left')
-        ax.set_xlabel('Start date')
-        ax.set_ylabel('Number of tasks')
-        if y_ticks is not None: 
-            ax.set_yticks(y_ticks)
-        ax.set_title(title)
-
-        plt.savefig(plot_file)   
-
-    def plot_quantity(self, plot_file, title, x_col, y_col, x_label, y_label, 
-                      data_label='', y_ticks=None, 
-		      job_filter=None, mean=False, hlines=None, status=False):
-        """Plot some metric against time. Note: can't plot status and mean together."""        
-        # Filter 
-        if job_filter is not None: 
-            data = self.data[job_filter]
-        else: 
-            data = self.data 
-	    
-	# Split by status 
-        if status: 
-            succeeded_data = data[data['Exit status']=='SUCCEEDED']
-            failed_data = data[data['Exit status']=='EXIT']
-
-        fig, ax = plt.subplots()
-
-        # Plot horizontal lines underneath
-        if hlines is not None: 
-            for yval in hlines: 
-                plt.axhline(y=yval, color='black', linewidth=0.5, label='_')
- 
-        # Plot data 
-        if status:
-            succeeded_data.plot(ax=ax, x=x_col, y=y_col, label='Successful jobs', style='o', ms=2, color='lawngreen') 
-            failed_data.plot(ax=ax, x=x_col, y=y_col, label='Failed jobs', style='o', ms=2, color='green') 
-        else: 
-            data.plot(ax=ax, x=x_col, y=y_col, label=data_label, style='o', ms=2, color='deepskyblue') 
- 
-        # Daily means 
-        if mean and not status: 
-            mean_sypd_by_date = data.groupby(data[x_col].dt.date)[y_col].mean()
-            dates = pd.date_range(mean_sypd_by_date.index[0], mean_sypd_by_date.index[-1])
-            mean_sypd_by_date = mean_sypd_by_date.reindex(dates, fill_value=pd.NA) 
-            mean_sypd_by_date.index = mean_sypd_by_date.index.tz_localize('UTC')
-            mean_sypd_by_date.index = mean_sypd_by_date.index + DateOffset(hours=12)
-
-            rolling_mean = mean_sypd_by_date.rolling(7, min_periods=3, center=True).mean()
-            rolling_mean.plot(ax=ax, x=x_col, y=y_col, color='navy', label='Rolling 7 day mean')   	      
-
-        # Annotate plot
-        box = ax.get_position()
-        ax.set_position([box.x0, box.y0, box.width, box.height * 0.9])
-    
-        plt.legend(markerscale=1.2, bbox_to_anchor=(0, 1.01, 1, 0.1), loc="lower left", ncol=2)
-        ax.set_xlabel(x_label)
-        ax.set_ylabel(y_label)
-        if y_ticks is not None: 
-            ax.set_yticks(y_ticks)
-        plt.title(title, y=1.15)
-
-        plt.savefig(plot_file)
-			      
+        plot.annotate(x_label="Start date", y_label="Number of tasks", title=title, y_ticks=y_ticks, legend_loc="upper left")
+        plot.save(plot_file)
+   
     
 class CoupledData(CylcJobData):
     """Cylc job log data from coupled task."""
@@ -170,126 +255,180 @@ class CoupledData(CylcJobData):
         jobs = (self.data['Suite id'].isin(suites_3m)) & (self.data['Elapsed time (s)'] < 7200)
         self.data.loc[jobs, 'Exit status'] = 'EXIT'
 
-    def calc_metrics(self): 
+    def calc_metrics(self, asypd=False): 
         """Calculate run/queue time in h and SYPD."""
+        self.__time_hours()
+        self.__calc_sypd()
+        if asypd: 
+            self.__calc_asypd()
+            self.__calc_rolling_asypd()
+        
+    def __time_hours(self): 
+        """Calculate run time & queue time in h."""
         self.data['Queued time (h)'] = self.data['Queued time (s)'] / 3600.0
         self.data['Elapsed time (h)'] = self.data['Elapsed time (s)'] / 3600.0
 
+    def __calc_sypd(self): 
+        """Calculate SYPD for each successful job."""
         for suite in self.suite_status.suites: 
             cycles_per_year = 360 / self.suite_status.data.loc[suite, 'Cycle length (days)'] 
             successful_jobs = (self.data['Suite id'] == suite) & (self.data['Exit status'] == 'SUCCEEDED')
             self.data.loc[successful_jobs, 'SYPD'] = 86400.0 / (self.data.loc[successful_jobs, 'Elapsed time (s)']*cycles_per_year)
+            
+    def __calc_run_length(self): 
+        """Calculte length of the run so far in years, for each cycle."""
+        for suite in self.suite_status.suites: 
+            jobs = (self.data['Suite id'] == suite) & (self.data['Exit status'] == 'SUCCEEDED')
+            
+            # To do: Catch case where cycle length is not an exact number of months         
+            cycle_months = self.suite_status.data.loc[suite,'Cycle length (days)'] / 30 
+            start_cycle = self.suite_status.data.loc[suite,'First cycle']
+            start_years = start_cycle.year + (start_cycle.month-cycle_months) / 12
+            self.data.loc[jobs, 'Run length (years)'] = (self.data.loc[jobs, 'Cycle'].dt.year +
+                                                         self.data.loc[jobs, 'Cycle'].dt.month/12 - start_years)
+                
+    def __calc_run_time(self): 
+        """Calculate time taken so far in days for each cycle"""
+        for suite in self.suite_status.suites: 
+            jobs = (self.data['Suite id'] == suite) & (self.data['Exit status'] == 'SUCCEEDED') 
+        
+            start_time = self.suite_status.data.loc[suite,'Start time']
+            self.data.loc[jobs,'Run time (days)'] = (self.data.loc[jobs,'Exit time'] - start_time).dt.total_seconds() / 86400.0
 
-    def plot_runtime_filesystem(self, plot_file, title, suites=None, date_string='2023-03-01', ms=2, xios_logs=False): 
-        """Plot time to completion for successful tasks. 
-        Organise by file system and optionally whether XIOS writing logs."""
-        # Filter data by suites 
-        if suites is not None: 
-            data = self.data[self.data['Suite id'].isin(suites)]
-        else:
-            data = self.data 
- 
-        fig, ax = plt.subplots()
-	
-        ref_date = pd.Timestamp(date_string, tz='UTC')
-		
-        # Plot baseline: (spinning disk) work
-        if xios_logs:
-            work_data = data[ (data['File system'] == 'Disk')  & 
-	                           (data['Submit time'] > ref_date) & 
-				   (data['XIOS logs']) ]
-        else: 
-            work_data = data[ (data['File system'] == 'Disk')  & 
-	                           (data['Submit time'] > ref_date) ]
-        work_data[work_data['Exit status']=='SUCCEEDED'].plot(
-            ax=ax, x='Init time', y='Elapsed time (h)', style='o', ms=ms, color='lawngreen')
-        work_data[work_data['Exit status']=='EXIT'].plot(
-            ax=ax, x='Init time', y='Elapsed time (h)', style='x', mew=1.5, ms=ms, color='green')
-    
-        # Plot NVMe
-        nvme_data = data[(data['File system'] == 'NVMe') & (data['Submit time'] > ref_date)]
+    def __calc_cycle_time(self): 
+        """Calculate time to complete cycle, starting from completion time of previous cycle."""
+        for suite in self.suite_status.suites: 
+            jobs = (self.data['Suite id'] == suite) & (self.data['Exit status'] == 'SUCCEEDED') 
+            self.data.loc[jobs, 'Cycle time (hours)'] = (self.data.loc[jobs, 'Exit time'] - 
+                                                         self.data.loc[jobs, 'Exit time'].shift()).dt.total_seconds() / 3600.0
+      
+    def __calc_asypd(self): 
+        """Calculate ASYPD for each job."""
+        self.__calc_run_length()
+        self.__calc_run_time()
+        self.data['ASYPD'] = self.data['Run length (years)'] / self.data['Run time (days)']
 
-        nvme_data[nvme_data['Exit status']=='SUCCEEDED'].plot(
-            ax=ax, x='Init time', y='Elapsed time (h)', style='o', ms=ms, color='magenta')
-        nvme_data[nvme_data['Exit status']=='EXIT'].plot(
-            ax=ax, x='Init time', y='Elapsed time (h)', style='+', mew=1.5, ms=ms+1, color='purple')
-
-
-        # Plot XIOS logs off (Work only) 
-        if xios_logs:
-            logs_off_data = data[ (data['File system'] == 'Disk')  &
-				  (data['Submit time'] > ref_date) & 
-				  ~(data['XIOS logs']) ]
-            logs_off_data[logs_off_data['Exit status']=='SUCCEEDED'].plot(
-                ax=ax, x='Init time', y='Elapsed time (h)', style='o', ms=ms, color='gold')
-            logs_off_data[logs_off_data['Exit status']=='EXIT'].plot(
-                ax=ax, x='Init time', y='Elapsed time (h)', style='x', mew=1.5, ms=ms, color='tomato')
-     
-        # Annotate plot
-        box = ax.get_position()
-        ax.set_position([box.x0, box.y0, box.width, box.height * 0.85])
-        labels = ['Succeeded Disk', 'Failed Disk', 
-                  'Succeeded NVMe', 'Failed NVMe', 
-                  'Succeeded XIOS logs off', 'Failed XIOS logs off']
-        if xios_logs:
-            plt.legend(labels, markerscale=1.5, ncol=3, 
-                       bbox_to_anchor=(0.1, 1.01, 1, 0.1), loc="lower left")
-        else: 
-            plt.legend(labels[:4], markerscale=1.5, ncol=2, 
-                       bbox_to_anchor=(0.1, 1.01, 1, 0.1), loc="lower left")
-        ax.set_xlabel('Start time')
-        ax.set_ylabel('Time to completion (h)')
-        plt.title(title, y=1.25) 
-
-        plt.savefig(plot_file)
-
-    def plot_queue_time(self, plot_file, title, suites=None, mean=False, hlines=None):
-        """Plot queue time for all jobs."""
-        if suites is not None: 
-            job_filter = self.data['Suite id'].isin(suites)
-        else:
-            job_filter = None
-	    
+    def __calc_rolling_asypd(self): 
+        self.__calc_cycle_time()
+        self.data['Cycle ASYPD'] = (1/12) / (self.data['Cycle time (hours)']/24)
+        
+    def plot_queue_time(self, plot_file, title, hlines=None, mean=False, suites=None):
+        """Plot queue time for all jobs.""" 
         self.plot_quantity(plot_file=plot_file, title=title, 
                            x_col='Submit time', y_col='Queued time (h)', 
-			   x_label='Submission time', y_label='Queue time (h)', 
-	                   data_label='Queue time per job', 
-		           job_filter=job_filter, mean=mean, hlines=hlines)
+                           x_label='Submission time', y_label='Queue time (h)', 
+                           data_label='Queue time per job', 
+                           mean=mean, hlines=hlines, suites=suites)
 
     def plot_sypd(self, plot_file, title, suites=None, mean=False, hlines=None, y_ticks=None):
         """Plot SYPD for successful tasks."""
-        if suites is not None: 
-            job_filter = self.data['Suite id'].isin(suites)
-        else: 
-            job_filter = None
-
         self.plot_quantity(plot_file=plot_file, title=title, 
-	                   x_col='Init time', y_col='SYPD', x_label='Start time', y_label='SYPD', 
-	                   data_label='SYPD per job', y_ticks=y_ticks, 
-			   job_filter=job_filter, mean=mean, hlines=hlines)
-			   
+                           x_col='Init time', y_col='SYPD', x_label='Start time', y_label='SYPD', 
+                           data_label='SYPD per job', y_ticks=y_ticks, 
+                           mean=mean, hlines=hlines, suites=suites)
+                           
     def plot_runtime(self, plot_file, title, suites=None, mean=False, hlines=None, y_ticks=None, status=False):
         """Plot run time. If status specified plot succeeded and failed jobs, otherwise just succeede ones."""
-        if suites is not None: 
-            job_filter = self.data['Suite id'].isin(suites)
-        else: 
-            job_filter = [True]*len(self.data.index)
         if not status: 
-            job_filter = job_filter & (self.data['Exit status']=='SUCCEEDED')
+            job_filter = self.data['Exit status']=='SUCCEEDED'
+        self.plot_quantity(data, plot_file=plot_file, title=title, 
+                           x_col='Init time', y_col='Elapsed time (h)', 
+                           x_label='Start time', y_label='Time to completion (h)', 
+                           data_label='Run time per job', y_ticks=y_ticks, 
+                           mean=mean, hlines=hlines, status=status, 
+                           job_filter=job_filter, suites=suites)
+               
+    def plot_asypd(self, plot_file, title, suites=None, ignore_rows=0, y_ticks=None, hlines=None): 
+        """Plot ASYPD over time for each suite as separate lines. Ignore first X cycles"""
+        job_filter = self.data['Exit status']=='SUCCEEDED'
+        self.plot_quantity_suites(plot_file, title,
+                                 x_col='Exit time', y_col='ASYPD', 
+                                 x_label='Completion time for coupled job', y_label='ASYPD',
+                                 y_ticks=y_ticks, hlines=hlines, 
+                                 job_filter=job_filter, suites=suites, ignore_rows=ignore_rows)
+
+    def plot_asypd_sypd_suites(self, plot_file, title, suites=None, y_ticks=None, hlines=None): 
+        """Plot SYPD as rolling mean, ASYPD over time and ASYPD per cycle as rolling mean.
+	   Generates one plot per suite."""		
+        job_filter = self.data['Exit status']=='SUCCEEDED'
+        root, ext = os.path.splitext(plot_file)
+        for suite in self.suite_status.suites: 
+            plot = JobPlot()
+            plot.hlines(hlines)           
             
-        self.plot_quantity(plot_file=plot_file, title=title, 
-	                   x_col='Init time', y_col='Elapsed time (h)', 
-			   x_label='Start time', y_label='Time to completion (h)', 
-	                   data_label='Run time per job', y_ticks=y_ticks, 
-			   job_filter=job_filter, mean=mean, hlines=hlines, status=status)
-		
+            self._plot_rolling_mean(plot.ax, 'Init time', 'SYPD', key='sypd', job_filter=job_filter, suites=[suite]) 
+            self._plot_rolling_mean(plot.ax, 'Init time', 'Cycle ASYPD', key='asypd_cycle', job_filter=job_filter, suites=[suite])
+            self._plot_data(plot.ax, 'Init time', 'ASYPD', line=True, key='asypd', job_filter=job_filter, suites=[suite])
+	    
+            title_suite = title + ': ' + self.suite_status.data.loc[suite, 'Description'] + '(' + suite + ')'
+            plot.annotate('Job start time', 'SYPD', title, legend_above=True, legend_cols=3, legend_rows=1)     
+            plot_file_suite = root + '_' + suite + ext	    
+            plot.save(plot_file_suite)  
+                
+    def plot_quantity_filesystem(self, plot_file, title, x_col, y_col, x_label, y_label, ms=2, hlines=None, 
+                                 mean=False, status=None, date_string='2023-03-01', xios_logs=False, suites=None): 
+        """Plot quantity, split up by file system and optionally whether XIOS writing logs."""                 
+        ref_date = pd.Timestamp(date_string, tz='UTC')
+        date_filter = self.data['Submit time'] > ref_date
+    
+        if xios_logs:
+            work_filter = (self.data['File system'] == 'Disk') & (self.data['XIOS logs']) & date_filter
+            logs_off_filter = (self.data['File system'] == 'Disk') & ~(self.data['XIOS logs']) & date_filter
+        else: 
+            work_filter = (self.data['File system'] == 'Disk') & date_filter
+        nvme_filter = (self.data['File system'] == 'NVMe') & date_filter
+    
+        plot = JobPlot()
+        plot.hlines(hlines)
+        legend_cols = 2	
+        if status:
+            keys = ['disk_succ', 'logs_off_succ', 'nvme_succ']
+            legend_rows = 2
+        else: 
+            keys = ['disk', 'logs_off', 'nvme']
+            legend_rows = 1
+ 
+        self._plot_data(plot.ax, x_col, y_col, ms=ms, key=keys[0], key_fail='disk_fail',
+	                status=status, job_filter=work_filter, suites=suites) 
+        if xios_logs: 
+            self._plot_data(plot.ax, x_col, y_col, ms=ms, key=keys[1], key_fail='logs_off_fail',
+	                   status=status, job_filter=logs_off_filter, suites=suites) 
+            legend_cols += 1 
+        self._plot_data(plot.ax, x_col, y_col, ms=ms, key=keys[2], key_fail='nvme_fail', 
+	               status=status, job_filter=nvme_filter, suites=suites)            
+        if mean and not status:
+            job_filter = self.data['Exit status']=='SUCCEEDED'
+            self._plot_rolling_mean(plot.ax, x_col, y_col, job_filter=job_filter, suites=suites) 
+            legend_cols += 1
+ 
+        plot.annotate(x_label, y_label, title, legend_above=True, legend_cols=legend_cols, legend_rows=legend_rows) 
+        plt.savefig(plot_file)
+	
+    def plot_runtime_filesystem(self, plot_file, title, ms=2, hlines=None, date_string='2023-03-01', 
+                                status=False, xios_logs=False, suites=None):
+        """Plot runtime per job, split by file system. 
+           Options to plot whether XIOS logs off, and plot success and failures."""
+        self.plot_quantity_filesystem(plot_file=plot_file, title=title, 
+                                      x_col='Init time', y_col='Elapsed time (h)',
+				      x_label='Job start time', y_label='Time to completion (h)',
+                                      ms=ms, hlines=hlines, date_string=date_string, 
+				      status=status, xios_logs=xios_logs, suites=suites)
+	
+    def plot_sypd_filesystem(self, plot_file, title, ms=2, hlines=None, date_string='2023-03-01', 
+                              mean=False, xios_logs=False, suites=None):
+        """Plot SYPD per job, split by file system. 
+           Options to plot whether XIOS logs off, and plot rolling mean."""
+        self.plot_quantity_filesystem(plot_file=plot_file, title=title, 
+                                      x_col='Init time', y_col='SYPD', x_label='Job start time', y_label='SYPD',
+                                      ms=ms, hlines=hlines, date_string=date_string, 
+				      mean=mean, xios_logs=xios_logs, suites=suites)	
 
 class PPTransferData(CylcJobData): 
     """Cylc job log data from pptransfer task."""
 
     def __init__(self, csv_file, suite_status):
         CylcJobData.__init__(self, csv_file, 'pptransfer', suite_status)
-	
+        
     def calc_metrics(self): 
         """Work out transfer speed. Ignore some outliers."""
         start_date = pd.Timestamp('2023-09-25', tz='UTC')
@@ -298,23 +437,16 @@ class PPTransferData(CylcJobData):
         outliers = (  self.data['Suite id'].isin(suites) & 
                      (self.data['Init time'] > start_date) & 
                      (self.data['Init time'] < end_date) )
-	
         valid_jobs = ( (self.data['Rep'] == 1) & 
-	               (self.data['Exit status'] == 'SUCCEEDED') & 
-		       ~outliers )
-
+                       (self.data['Exit status'] == 'SUCCEEDED') & 
+                       ~outliers )
         self.data.loc[valid_jobs,'Speed (MB/s)'] = (self.data.loc[valid_jobs,'Data size (GB)'] * 1024 /
                                                   self.data.loc[valid_jobs,'Elapsed time (s)'])
 
     def plot_speed(self, plot_file, title, suites=None, mean=False, hlines=None): 
-        """Plot transfer speed."""
-        if suites is not None: 
-            job_filter = self.data['Suite id'].isin(suites) 
-        else: 
-            job_filter = None 
-
+        """Plot transfer speed."""           
         self.plot_quantity(plot_file=plot_file, title=title, 
                            x_col='Init time', y_col='Speed (MB/s)', 
                            x_label='Start time', y_label='Transfer speed (MB/s)', 
                            data_label='Speed of transfer job (MB/s)', 
-                           job_filter=job_filter, mean=mean, hlines=hlines)
+                           mean=mean, hlines=hlines, suites=suites)

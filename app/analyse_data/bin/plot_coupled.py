@@ -26,9 +26,6 @@ def generate_plots(data_dir='.', plot_dir='.'):
 
     # Filter
     suites_3m = suite_status.data[suite_status.data['Cycle length (days)'] == 90].index
-
-    # Plots 
-    setup_plots()
     
     date_string='2023-03-01'
     coupled.plot_runtime_filesystem(
@@ -36,7 +33,7 @@ def generate_plots(data_dir='.', plot_dir='.'):
         title='CANARI coupled task run times since {}'.format(date_string),
         suites=suites_3m, 
 	date_string=date_string, 
-	ms=2)
+	status=True)
 	
     date_string='2023-10-01'
     coupled.plot_runtime_filesystem(
@@ -44,6 +41,7 @@ def generate_plots(data_dir='.', plot_dir='.'):
 	title='CANARI coupled task run times since {}'.format(date_string),
         suites=suites_3m, 
 	date_string=date_string, 
+        status=True, 
         ms=3)
     coupled.plot_runtime_filesystem(
         plot_file=plot_dir+'/coupled_runtime_xios_logs.png',
@@ -51,9 +49,10 @@ def generate_plots(data_dir='.', plot_dir='.'):
         suites=suites_3m, 
         date_string=date_string, 
         ms=3, 
-        xios_logs=True)
+        xios_logs=True, 
+	status=True)
 	
-    coupled.plot_status(
+    coupled.plot_daily_status(
         plot_file=plot_dir+'/coupled_status.png',
         title='CANARI coupled task statuses each day',
         suites=suites_3m, 
