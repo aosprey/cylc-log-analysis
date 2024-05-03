@@ -15,7 +15,8 @@
 {% else %}
         PT12H = """
 	        @wall_clock => archive_logs:finish => 
-                check_logs:fail? => sync_puma2_logs => untar_logs
+                check_logs:fail? => sync_puma2_logs => untar_logs => 
+                housekeeping
                 """
 
 	P1D = """
