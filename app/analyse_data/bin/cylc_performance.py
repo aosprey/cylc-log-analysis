@@ -229,9 +229,13 @@ class CylcJobData:
         plot.annotate(x_label, y_label, title, y_ticks=y_ticks, legend_loc='lower left')
         plot.save(plot_file)
                               
-    def plot_daily_status(self, plot_file, title, suites=None, mean=False, hlines=None, y_ticks=None):
-        """Plot number of task successes and failures per day."""  
-        data = self._filter_jobs(suites=suites)
+    def plot_daily_status(self, plot_file, title, suites=None, mean=False, ref_date=None, hlines=None, y_ticks=None):
+        """Plot number of task successes and failures per day."""
+        if ref_date is not None:
+            date_filter = self.data['Init time'] > ref_date
+        else: 
+            date_filter = None
+        data = self._filter_jobs(suites=suites, job_filter=date_filter)
     
         # Group by exit status 
         status_by_date = data.groupby(data['Init time'].dt.date)['Exit status'].value_counts()
@@ -452,12 +456,16 @@ class CoupledData(CylcJobData):
                            legend_above=False, mean=mean, hlines=hlines, 
                            suites=suites, job_filter=job_filter)
 
-    def plot_sypd(self, plot_file, title, suites=None, mean=False, hlines=None, y_ticks=None):
+    def plot_sypd(self, plot_file, title, suites=None, mean=False, ref_date=None, hlines=None, y_ticks=None):
         """Plot SYPD for successful tasks."""
+        if ref_date is not None: 
+            job_filter = self.data['Init time'] > ref_date
+        else: 
+            job_filter = None
         self.plot_quantity(plot_file=plot_file, title=title, 
                            x_col='Init time', y_col='SYPD', x_label='Start time', y_label='SYPD', 
                            data_label='SYPD per job', y_ticks=y_ticks, 
-                           mean=mean, hlines=hlines, suites=suites)
+                           mean=mean, hlines=hlines, suites=suites, job_filter=job_filter)
                            
     def plot_runtime(self, plot_file, title, suites=None, mean=False, hlines=None, y_ticks=None, status=False):
         """Plot run time. If status specified plot succeeded and failed jobs, otherwise just succeeded ones."""
@@ -499,7 +507,7 @@ class CoupledData(CylcJobData):
                                  mean=False, status=None, ref_date=None, xios_logs=False, suites=None): 
         """Plot quantity, split up by file system and optionally whether XIOS writing logs."""
         if ref_date is not None:
-            date_filter = self.data['Submit time'] > ref_date
+            date_filter = self.data['Init time'] > ref_date
         else: 
             date_filter = None
         if xios_logs:

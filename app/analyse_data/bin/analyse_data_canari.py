@@ -30,33 +30,40 @@ def coupled_data(data_dir='.', plot_dir='.'):
     # Plots 
     image_dir = plot_dir+'/IMAGES'
     ens_label = 'CANARI LE on ARCHER2: '
+    now = pd.Timestamp.now()
+    ref_date = pd.Timestamp(now.year, now.month, 1, tz='UTC') - pd.offsets.DateOffset(months=3)
+    ref_date_str = ref_date.strftime('%Y-%m-%d')
 
-    coupled.plot_queue_time(
-        plot_file=image_dir+'/coupled_queue_time.png', 
+    coupled.plot_queue_time(plot_file=image_dir+'/coupled_queue_time.png', 
         title=ens_label+'Job queue times', 
-        suites=suites_3m, 
-        mean=True, 
-        hlines=np.arange(10,50,10))
-    coupled.plot_runtime_filesystem(
-        plot_file=image_dir+'/coupled_runtime.png', 
+        suites=suites_3m, mean=True, hlines=np.arange(10,50,10))
+    coupled.plot_queue_time(plot_file=image_dir+'/coupled_queue_time_recent.png', 
+        title=ens_label+'Job queue times since '+ref_date_str, 
+        suites=suites_3m, mean=True, hlines=np.arange(10,50,10), ref_date=ref_date)
+
+    coupled.plot_runtime_filesystem(plot_file=image_dir+'/coupled_runtime.png', 
         title=ens_label+'Run times per model month',
-        suites=suites_3m,
-#	hlines=np.arange(2,10,2),
-        status=True, 
-        xios_logs=True) 
-    coupled.plot_sypd(
-        plot_file=image_dir+'/coupled_SYPD.png', 
+        suites=suites_3m, status=True, xios_logs=True) 
+    coupled.plot_runtime_filesystem(plot_file=image_dir+'/coupled_runtime_recent.png', 
+        title=ens_label+'Run times per model month since '+ref_date_str,
+        suites=suites_3m, status=True, xios_logs=True, ref_date=ref_date) 
+
+    coupled.plot_sypd(plot_file=image_dir+'/coupled_SYPD.png', 
         title=ens_label+'SYPD per model month',
-        suites=suites_3m,
-	hlines=np.arange(0.8,2.6,0.4),
-        y_ticks=np.arange(0.8,2.6,0.2),
+        suites=suites_3m, hlines=np.arange(0.8,2.6,0.4), y_ticks=np.arange(0.8,2.6,0.2),
         mean=True) 
-    coupled.plot_daily_status(
-        plot_file=image_dir+'/coupled_status.png', 
+    coupled.plot_sypd(plot_file=image_dir+'/coupled_SYPD_recent.png', 
+        title=ens_label+'SYPD per model month since '+ref_date_str,
+        suites=suites_3m, hlines=np.arange(0.8,2.6,0.4), y_ticks=np.arange(0.8,2.6,0.2),
+        mean=True, ref_date=ref_date) 
+
+    coupled.plot_daily_status(plot_file=image_dir+'/coupled_status.png', 
         title=ens_label+'Model task statuses per day',
-        suites=suites_3m,
-        mean=True, 
-	hlines=np.arange(20,110,20))
+        suites=suites_3m, mean=True, hlines=np.arange(20,110,20))
+    coupled.plot_daily_status(plot_file=image_dir+'/coupled_status_recent.png', 
+        title=ens_label+'Model task statuses per day since '+ref_date_str,
+        suites=suites_3m, mean=True, hlines=np.arange(20,110,20), ref_date=ref_date)
+
     coupled.plot_asypd_sypd_suites(
         plot_file=image_dir+'/asypd_sypd.png', 
 	title='Run speed on ARCHER2',
