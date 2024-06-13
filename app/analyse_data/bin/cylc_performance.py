@@ -5,6 +5,7 @@ import numpy as np
 import pandas as pd 
 from pandas.tseries.offsets import DateOffset
 import matplotlib.pyplot as plt
+from datetime import timedelta
 
 # Default plot colours and data labels - can be overwritten in calling code. 
 keys = ['data', 'fail', 'mean', 
@@ -18,9 +19,9 @@ color_vals = ['deepskyblue', 'red', 'navy',
 	      'magenta', 'magenta', 'purple', 
 	      'blue', 'orange', 'green'] 
 label_vals = ['Successful jobs', 'Failed jobs', 'Rolling 7 day mean', 
-              'Disk', 'Succeeded Disk', 'Failed Disk',
-              'XIOS logs off', 'Succeeded XIOS logs off', 'Failed XIOS logs off',
-              'NVMe', 'Succeeded NVMe', 'Failed NVMe', 
+              'XIOS logs', 'XIOS logs succeeded', 'XIOS logs failed',
+              'Disk', 'Disk succeeded', 'Disk failed',
+              'NVMe', 'NVMe succeeded', 'NVMe failed', 
 	      'SYPD (rolling 7 day mean)', 'ASYPD per cycle (rolling 7 day mean)', 'ASYPD since start']
 colors = dict(zip(keys, color_vals))
 labels = dict(zip(keys, label_vals))
@@ -35,7 +36,10 @@ class JobPlot:
         fig, ax = plt.subplots()
         self.fig = fig 
         self.ax = ax
-    
+	
+    def __del__(self):
+        plt.close(self.fig)
+
     def hlines(self, hlines):
         """Plot horizontal grid lines (if defined), usually call before plotting data."""
         if hlines is not None:
@@ -72,10 +76,13 @@ class JobPlot:
     def save(self, plot_file):
         """Save plot."""
         plt.savefig(plot_file)
-      
-
+	
+ 
 class SuiteStatus: 
     """Suite status data"""
+    
+    float_format = '%.2f'
+    date_format = '%Y-%m-%d %H:%M:%S'
 
     def __init__(self, csv_file): 
         dt_cols = ['First cycle', 'Start time'] 
@@ -83,6 +90,27 @@ class SuiteStatus:
 
         self.data = pd.read_csv(csv_file, index_col=index_col, parse_dates=dt_cols) 
         self.suites = self.data.index
+	
+    def write_csv(self, out_file, cols=None, suites=None): 
+        """Write data as CSV file."""
+        if suites is not None: 
+            suite_info = self.data.loc[suites]
+        else:
+            suite_info = self.data
+        suite_info.to_csv(out_file, columns=cols, 
+                         float_format=self.float_format, date_format=self.date_format)
+	
+    def write_html(self, out_file, cols=None, formatters=None, suites=None): 
+        """Write data as HTML table.
+	   To do: Should be able to get formatters to work directly with to_html()"""
+        if suites is not None:
+            suite_info = self.data.loc[suites]
+        else:
+            suite_info = self.data
+        if formatters is not None: 
+            for col in cols: 
+                suite_info[col] = suite_info[col].apply(formatters[col])
+        suite_info.to_html(out_file, columns=cols, justify='left', render_links=True, escape=False)
 
 
 class CylcJobData:
@@ -161,12 +189,16 @@ class CylcJobData:
          rolling_mean.plot(ax=ax, x=x_col, y=y_col, color=colors[key], label=labels[key])
 	        
     def plot_quantity(self, plot_file, title, x_col, y_col, x_label, y_label, 
-                      data_label='', y_ticks=None, mean=False, hlines=None, status=False, 
+                      data_label='', legend_above=True, y_ticks=None,
+                      mean=False, hlines=None, status=False, 
                       job_filter=None, suites=None):
-        """Plot some metric against time. Note: can't plot status and mean together."""  
+        """Plot some metric against time. Note: can't plot status and mean together."""
+        if job_filter is not None: 
+            job_filter = job_filter & self.data[x_col].notnull()
+        else: 
+            job_filter = self.data[x_col].notnull()
         plot = JobPlot()
         plot.hlines(hlines)
-	
         self._plot_data(plot.ax,  x_col, y_col, key='data', key_fail='fail', data_label=data_label, 
 	                status=status, job_filter=job_filter, suites=suites) 
         legend_cols = 2
@@ -175,12 +207,12 @@ class CylcJobData:
         else:
             legend_rows = 1
             if mean: 
-                job_filter = self.data['Exit status']=='SUCCEEDED'
+                job_filter = job_filter & (self.data['Exit status']=='SUCCEEDED')
                 self._plot_rolling_mean(plot.ax, x_col, y_col, job_filter=job_filter, suites=suites)                          
                 legend_cols = 3	
 			
         plot.annotate(x_label, y_label, title, y_ticks=y_ticks, 
-	              legend_above=True, legend_cols=legend_cols, legend_rows=legend_rows)
+	              legend_above=legend_above, legend_cols=legend_cols, legend_rows=legend_rows)
         plot.save(plot_file)
     
     def plot_quantity_suites(self, plot_file, title, x_col, y_col, x_label, y_label, 
@@ -227,10 +259,63 @@ class CylcJobData:
     
 class CoupledData(CylcJobData):
     """Cylc job log data from coupled task."""
-
+        
     def __init__(self, csv_file, suite_status):
         CylcJobData.__init__(self, csv_file, 'coupled', suite_status) 
+        
+    def __time_hours(self): 
+        """Calculate run time & queue time in h."""
+        self.data['Queued time (h)'] = self.data['Queued time (s)'] / 3600.0
+        self.data['Elapsed time (h)'] = self.data['Elapsed time (s)'] / 3600.0
 
+    def __calc_sypd(self): 
+        """Calculate SYPD for each successful job."""
+        for suite in self.suite_status.suites: 
+            cycles_per_year = 360 / self.suite_status.data.loc[suite, 'Cycle length (days)'] 
+            successful_jobs = (self.data['Suite id'] == suite) & (self.data['Exit status'] == 'SUCCEEDED')
+            self.data.loc[successful_jobs, 'SYPD'] = 86400.0 / (self.data.loc[successful_jobs, 'Elapsed time (s)']*cycles_per_year)
+            
+    def __calc_completed_years(self): 
+        """Calculte length of the run so far in years, for each cycle."""
+        for suite in self.suite_status.suites: 
+            jobs = (self.data['Suite id'] == suite) & (self.data['Exit status'] == 'SUCCEEDED')
+            # To do: Catch case where cycle length is not an exact number of months         
+            cycle_months = self.suite_status.data.loc[suite,'Cycle length (days)'] / 30 
+            self.suite_status.data.loc[suite,'Cycle length (months)'] = cycle_months
+            start_cycle = self.suite_status.data.loc[suite,'First cycle']
+            start_years = start_cycle.year + (start_cycle.month-cycle_months) / 12
+            self.data.loc[jobs, 'Completed years'] = (self.data.loc[jobs, 'Cycle'].dt.year +
+                                                      self.data.loc[jobs, 'Cycle'].dt.month/12 - start_years)
+                
+    def __calc_run_time(self): 
+        """Calculate time taken so far in days for each cycle"""
+        for suite in self.suite_status.suites: 
+            jobs = (self.data['Suite id'] == suite) & (self.data['Exit status'] == 'SUCCEEDED') 
+        
+            start_time = self.suite_status.data.loc[suite,'Start time']
+            self.data.loc[jobs,'Run time (days)'] = (self.data.loc[jobs,'Exit time'] - start_time).dt.total_seconds() / 86400.0
+
+    def __calc_cycle_time(self): 
+        """Calculate time to complete cycle, starting from completion time of previous cycle."""
+        for suite in self.suite_status.suites: 
+            jobs = (self.data['Suite id'] == suite) & (self.data['Exit status'] == 'SUCCEEDED') 
+            self.data.loc[jobs, 'Cycle time (hours)'] = (self.data.loc[jobs, 'Exit time'] - 
+                                                         self.data.loc[jobs, 'Exit time'].shift()).dt.total_seconds() / 3600.0
+      
+    def __calc_asypd(self): 
+        """Calculate ASYPD (since start of run) for each job."""
+        self.__calc_completed_years()
+        self.__calc_run_time()
+        self.data['ASYPD'] = self.data['Completed years'] / self.data['Run time (days)']
+
+    def __calc_rolling_asypd(self): 
+        """Calculate ASYPD (per cycle) for each job."""
+        self.__calc_cycle_time()
+        for suite in self.suite_status.suites: 
+            jobs = (self.data['Suite id'] == suite) & (self.data['Exit status'] == 'SUCCEEDED')
+            cycle_months = self.suite_status.data.loc[suite, 'Cycle length (months)']
+            self.data.loc[jobs, 'Cycle ASYPD'] = (cycle_months/12) / (self.data.loc[jobs, 'Cycle time (hours)']/24)
+	 
     def set_filesystem(self):
         """Work out whether jobs ran on spinning disk or nVME."""
         self.data['File system'] = 'Disk' 
@@ -250,74 +335,114 @@ class CoupledData(CylcJobData):
             self.data.loc[cycles, 'XIOS logs'] = False
 
     def reset_errors(self): 
-        """Fix cycles which are marked as succeeded but actually failed."""
+        """Fix cycles which are marked as succeeded but actually failed.
+           This should maybe be outside main code."""
         suites_3m = self.suite_status.data[self.suite_status.data['Cycle length (days)'] == 90].index
         jobs = (self.data['Suite id'].isin(suites_3m)) & (self.data['Elapsed time (s)'] < 7200)
         self.data.loc[jobs, 'Exit status'] = 'EXIT'
 
-    def calc_metrics(self, asypd=False): 
-        """Calculate run/queue time in h and SYPD."""
+    def calc_metrics(self): 
+        """Calculate metrics for each successful job: 
+           - run time in h, queue time in h
+	   - SYPD, ASYPD (since start), ASYPD (current cycle)."""
         self.__time_hours()
         self.__calc_sypd()
-        if asypd: 
-            self.__calc_asypd()
-            self.__calc_rolling_asypd()
-        
-    def __time_hours(self): 
-        """Calculate run time & queue time in h."""
-        self.data['Queued time (h)'] = self.data['Queued time (s)'] / 3600.0
-        self.data['Elapsed time (h)'] = self.data['Elapsed time (s)'] / 3600.0
+        self.__calc_asypd()
+        self.__calc_rolling_asypd()
 
-    def __calc_sypd(self): 
-        """Calculate SYPD for each successful job."""
-        for suite in self.suite_status.suites: 
-            cycles_per_year = 360 / self.suite_status.data.loc[suite, 'Cycle length (days)'] 
-            successful_jobs = (self.data['Suite id'] == suite) & (self.data['Exit status'] == 'SUCCEEDED')
-            self.data.loc[successful_jobs, 'SYPD'] = 86400.0 / (self.data.loc[successful_jobs, 'Elapsed time (s)']*cycles_per_year)
-            
-    def __calc_run_length(self): 
-        """Calculte length of the run so far in years, for each cycle."""
-        for suite in self.suite_status.suites: 
-            jobs = (self.data['Suite id'] == suite) & (self.data['Exit status'] == 'SUCCEEDED')
-            
-            # To do: Catch case where cycle length is not an exact number of months         
-            cycle_months = self.suite_status.data.loc[suite,'Cycle length (days)'] / 30 
-            start_cycle = self.suite_status.data.loc[suite,'First cycle']
-            start_years = start_cycle.year + (start_cycle.month-cycle_months) / 12
-            self.data.loc[jobs, 'Run length (years)'] = (self.data.loc[jobs, 'Cycle'].dt.year +
-                                                         self.data.loc[jobs, 'Cycle'].dt.month/12 - start_years)
-                
-    def __calc_run_time(self): 
-        """Calculate time taken so far in days for each cycle"""
-        for suite in self.suite_status.suites: 
-            jobs = (self.data['Suite id'] == suite) & (self.data['Exit status'] == 'SUCCEEDED') 
-        
-            start_time = self.suite_status.data.loc[suite,'Start time']
-            self.data.loc[jobs,'Run time (days)'] = (self.data.loc[jobs,'Exit time'] - start_time).dt.total_seconds() / 86400.0
+    def __progress_stats(self): 
+        """Derive run progress stats for each run"""
+        data_by_suite = self.data.groupby('Suite id')
+        suite_info = self.suite_status.data
+        suite_info['Run length (years)'] = (suite_info['Cycle length (days)'] * suite_info['Run length (cycles)']) / 360
+        last_job = data_by_suite.nth(-1, dropna='any').set_index('Suite id')
+        suite_info['Completed years'] = last_job['Completed years']
+        suite_info['Last job exit time'] = last_job['Exit time']
+        suite_info['SYPD'] = data_by_suite['SYPD'].mean()
+        suite_info['ASYPD'] = data_by_suite['ASYPD'].last()
+        self.suite_status.data = suite_info
 
-    def __calc_cycle_time(self): 
-        """Calculate time to complete cycle, starting from completion time of previous cycle."""
-        for suite in self.suite_status.suites: 
-            jobs = (self.data['Suite id'] == suite) & (self.data['Exit status'] == 'SUCCEEDED') 
-            self.data.loc[jobs, 'Cycle time (hours)'] = (self.data.loc[jobs, 'Exit time'] - 
-                                                         self.data.loc[jobs, 'Exit time'].shift()).dt.total_seconds() / 3600.0
-      
-    def __calc_asypd(self): 
-        """Calculate ASYPD for each job."""
-        self.__calc_run_length()
-        self.__calc_run_time()
-        self.data['ASYPD'] = self.data['Run length (years)'] / self.data['Run time (days)']
+    def __predict_end(self): 
+        """Work out when run will completed based on ASYPD for last 7 days."""
+        suite_info = self.suite_status.data
+        running_suites = suite_info[suite_info['Status'] == 'Running'].index
+        for suite in running_suites:
+            suite_info.loc[suite,'Remaining years'] = suite_info.loc[suite,'Run length (years)'] - suite_info.loc[suite,'Completed years']
+            suite_info.loc[suite, 'Time of latest job'] = suite_info.loc[suite, 'Last job exit time']
+            ref_date = suite_info.loc[suite, 'Time of latest job'] - timedelta(days=7)
+            job_filter = (self.data['Exit time'] > ref_date) & (self.data['Exit status'] == 'SUCCEEDED')
+            data = self._filter_jobs(job_filter, [suite])
+            if data.shape[0] == 0: 
+                print(suite, 'no jobs in last 7 days')
+                suite_info.loc[suite, 'ASYPD (last 7 days)'] = 0
+            else: 
+                start = data['Cycle'].iloc[0]
+                end = data['Cycle'].iloc[-1]
+                cycle_months = suite_info.loc[suite,'Cycle length (months)']
+                start_years = start.year + (start.month - cycle_months)/12
+                completed_years = (end.year + end. month/12) - start_years
 
-    def __calc_rolling_asypd(self): 
-        self.__calc_cycle_time()
-        self.data['Cycle ASYPD'] = (1/12) / (self.data['Cycle time (hours)']/24)
-        
+                start_time = data['Submit time'].iloc[0]
+                end_time = data['Exit time'].iloc[-1]
+                run_time_days = (end_time - start_time).total_seconds() / 86400
+                suite_info.loc[suite, 'ASYPD (last 7 days)'] = completed_years / run_time_days
+                remaining_days = suite_info.loc[suite,'Remaining years'] / suite_info.loc[suite, 'ASYPD (last 7 days)']
+                suite_info.loc[suite,'Predicted end time'] = suite_info.loc[suite,'Time of latest job'] + timedelta(days=remaining_days)
+        self.suite_status.data = suite_info
+        	    
+    def calc_suite_stats(self): 
+        """Calculate summary stats for each suite: 
+	   - target run length (years), run progress (years)
+	   - SYPD, ASYPD (since start), ASYPD (over last 7 days), 
+	   - date of last completed job, predicted end date
+	   Need to have already run calc_metrics()."""
+        self.__progress_stats()
+        self.__predict_end()
+	
+    def __html_formatters(self, plot_format):
+        """Define html formatters for suite perf data.
+	   Could pass these in."""
+        self.out_cols = ['Description', 'Status', 'File system',
+                         'Completed years', 'SYPD', 'ASYPD', 'ASYPD (last 7 days)', 
+                         'Time of latest job', 'Remaining years', 'Predicted end time', 
+                         'Plot']
+        default_formatters = lambda x: x
+        self.col_formatters = {col:default_formatters for col in self.out_cols}
+
+        date_cols = ['Time of latest job', 'Predicted end time']
+        date_format = '%Y-%m-%d %H:%M:%S'
+        date_formatter = lambda x: x.strftime(date_format) if pd.notnull(x) else ''
+        self.col_formatters.update({col:date_formatter for col in date_cols})
+    
+        float_cols = ['Run length (years)', 'Completed years', 
+                      'SYPD', 'ASYPD', 'ASYPD (last 7 days)', 
+	              'Remaining years']
+        float_format = '{:.2f}'
+        float_formatter = lambda x: float_format.format(x) if pd.notnull(x) else ''
+        self.col_formatters.update({col:float_formatter for col in float_cols})
+	
+	# Add in link to plots
+        self.suite_status.data['Plot'] = self.suite_status.data.apply(lambda x: plot_format.format(x.name), axis=1)
+	
+    def write_suite_stats(self, csv_file=None, html_file=None, plot_format=None, suites=None): 
+        """
+        Write out suite perf data as csv and/or html. 
+        For html, option to point to plot file.
+	"""
+        if csv_file is not None:
+            self.suite_status.write_csv(csv_file, suites=suites)
+        if html_file is not None:
+            self.__html_formatters(plot_format)
+            self.suite_status.write_html(
+	        html_file, cols=self.out_cols, formatters=self.col_formatters, suites=suites)
+	
     def plot_queue_time(self, plot_file, title, hlines=None, mean=False, suites=None):
         """Plot queue time for all jobs.""" 
         self.plot_quantity(plot_file=plot_file, title=title, 
                            x_col='Submit time', y_col='Queued time (h)', 
                            x_label='Submission time', y_label='Queue time (h)', 
-                           data_label='Queue time per job', 
+                           data_label='Queue time per job',
+                           legend_above=False, 
                            mean=mean, hlines=hlines, suites=suites)
 
     def plot_sypd(self, plot_file, title, suites=None, mean=False, hlines=None, y_ticks=None):
@@ -349,7 +474,8 @@ class CoupledData(CylcJobData):
 
     def plot_asypd_sypd_suites(self, plot_file, title, suites=None, y_ticks=None, hlines=None): 
         """Plot SYPD as rolling mean, ASYPD over time and ASYPD per cycle as rolling mean.
-	   Generates one plot per suite."""		
+	   Generates one plot per suite.
+           Add filename to suite_status for html table."""		
         job_filter = self.data['Exit status']=='SUCCEEDED'
         root, ext = os.path.splitext(plot_file)
         for suite in self.suite_status.suites: 
@@ -362,15 +488,15 @@ class CoupledData(CylcJobData):
 	    
             title_suite = title + ': ' + self.suite_status.data.loc[suite, 'Description'] + '(' + suite + ')'
             plot.annotate('Job start time', 'SYPD', title, legend_above=True, legend_cols=3, legend_rows=1)     
-            plot_file_suite = root + '_' + suite + ext	    
+            plot_file_suite = root + '_' + suite + ext	   
             plot.save(plot_file_suite)  
                 
     def plot_quantity_filesystem(self, plot_file, title, x_col, y_col, x_label, y_label, ms=2, hlines=None, 
                                  mean=False, status=None, date_string='2023-03-01', xios_logs=False, suites=None): 
         """Plot quantity, split up by file system and optionally whether XIOS writing logs."""                 
         ref_date = pd.Timestamp(date_string, tz='UTC')
-        date_filter = self.data['Submit time'] > ref_date
-    
+        date_filter = (self.data['Submit time'] > ref_date) & self.data[x_col].notnull()
+	
         if xios_logs:
             work_filter = (self.data['File system'] == 'Disk') & (self.data['XIOS logs']) & date_filter
             logs_off_filter = (self.data['File system'] == 'Disk') & ~(self.data['XIOS logs']) & date_filter
@@ -397,7 +523,7 @@ class CoupledData(CylcJobData):
         self._plot_data(plot.ax, x_col, y_col, ms=ms, key=keys[2], key_fail='nvme_fail', 
 	               status=status, job_filter=nvme_filter, suites=suites)            
         if mean and not status:
-            job_filter = self.data['Exit status']=='SUCCEEDED'
+            job_filter = date_filter & self.data['Exit status']=='SUCCEEDED'
             self._plot_rolling_mean(plot.ax, x_col, y_col, job_filter=job_filter, suites=suites) 
             legend_cols += 1
  
@@ -423,6 +549,7 @@ class CoupledData(CylcJobData):
                                       ms=ms, hlines=hlines, date_string=date_string, 
 				      mean=mean, xios_logs=xios_logs, suites=suites)	
 
+
 class PPTransferData(CylcJobData): 
     """Cylc job log data from pptransfer task."""
 
@@ -444,7 +571,7 @@ class PPTransferData(CylcJobData):
                                                   self.data.loc[valid_jobs,'Elapsed time (s)'])
 
     def plot_speed(self, plot_file, title, suites=None, mean=False, hlines=None): 
-        """Plot transfer speed."""           
+        """Plot transfer speed."""
         self.plot_quantity(plot_file=plot_file, title=title, 
                            x_col='Init time', y_col='Speed (MB/s)', 
                            x_label='Start time', y_label='Transfer speed (MB/s)', 

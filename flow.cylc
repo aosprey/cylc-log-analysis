@@ -5,18 +5,24 @@
    UTC mode = True
 
 [scheduling]
-	#initial cycle point = next(T00) # start from midnight tonight 
-	initial cycle point = previous(T00) # start from midnight last night
+	#initial cycle point = next(T02) # start from 2am tonight
+	initial cycle point = previous(T02) # start from 2am last night
         runahead limit = P10D
         
     [[graph]]
 {% if TEST %}
-        R1 = "check_logs => plot_coupled => plot_pptransfer => performance_stats => plot_wsypd"
+#        R1 = """
+#             check_logs => analyse_data
+#             """
+        P1D = """
+              @wall_clock => analyse_data => housekeeping
+              """
 {% else %}
         PT12H = """
 	        @wall_clock => archive_logs:finish => 
                 check_logs:fail? => sync_puma2_logs => untar_logs => 
-                housekeeping
+		housekeeping
+		check_logs? => housekeeping
                 """
 
 	P1D = """
@@ -24,9 +30,8 @@
               check_logs:fail? => sync_puma2_logs => untar_logs
               check_logs? | untar_logs => process_logs
 
-              process_logs => concat_logs =>
-              plot_coupled => plot_pptransfer => performance_stats => plot_wsypd => 
-              housekeeping 
+              process_logs => concat_logs => analyse_data => 
+	      housekeeping 
 	      """
 {% endif %}
 	     
@@ -52,7 +57,6 @@ export ROSE_VERSION={{ROSE_VERSION}}
 	    ARCHIVE_DIR = {{ARCHIVE_DIR}}
 	    DATA_DIR = {{DATA_DIR}}
             PLOT_DIR = {{PLOT_DIR}}
-            STATS_DIR = {{STATS_DIR}}
 
 # Log archiving 
 
@@ -63,7 +67,7 @@ export ROSE_VERSION={{ROSE_VERSION}}
     # Rsync needs to run on login nodes
     [[archive_logs]]
 	inherit = None, LOGS
-        platform = ln02_bg
+        platform = ln04_bg
         pre-script = "module load gct"
         execution retry delays = {{RETRIES}}
         submission retry delays = {{RETRIES}}
@@ -98,7 +102,7 @@ export ROSE_VERSION={{ROSE_VERSION}}
         inherit = None, PROCESS
     	platform = lotus
 	[[[directives]]]
-            --partition=short-serial 
+            --partition=short-serial
 	    --time=3:00:00
 
 # Analysis 
@@ -109,17 +113,8 @@ export ROSE_VERSION={{ROSE_VERSION}}
         [[[environment]]]
             ROSE_TASK_APP = analyse_data
 
-    [[plot_coupled]]
-	inherit = None, ANALYSIS
-
-    [[plot_pptransfer]]
-	inherit = None, ANALYSIS    
-
-    [[performance_stats]]	
+    [[analyse_data]]
         inherit = None, ANALYSIS
-
-    [[plot_wsypd]]
-	inherit = None, ANALYSIS
 
 # Housekeeping
 
