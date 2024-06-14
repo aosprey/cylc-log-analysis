@@ -34,35 +34,43 @@ def coupled_data(data_dir='.', plot_dir='.'):
     ref_date = pd.Timestamp(now.year, now.month, 1, tz='UTC') - pd.offsets.DateOffset(months=3)
     ref_date_str = ref_date.strftime('%Y-%m-%d')
 
-    coupled.plot_queue_time(plot_file=image_dir+'/coupled_queue_time.png', 
+    coupled.plot_queue_time(
+        plot_file=image_dir+'/coupled_queue_time.png', 
         title=ens_label+'Job queue times', 
-        suites=suites_3m, mean=True, hlines=np.arange(10,50,10))
-    coupled.plot_queue_time(plot_file=image_dir+'/coupled_queue_time_recent.png', 
+        suites=suites_3m, mean=True, y_grid=True)
+    coupled.plot_queue_time(
+        plot_file=image_dir+'/coupled_queue_time_recent.png', 
         title=ens_label+'Job queue times since '+ref_date_str, 
-        suites=suites_3m, mean=True, hlines=np.arange(10,50,10), ref_date=ref_date)
+        suites=suites_3m, ref_date=ref_date, mean=True, y_grid=True)
 
-    coupled.plot_runtime_filesystem(plot_file=image_dir+'/coupled_runtime.png', 
+    coupled.plot_runtime_filesystem(
+        plot_file=image_dir+'/coupled_runtime.png', 
         title=ens_label+'Run times per model month',
         suites=suites_3m, status=True, xios_logs=True) 
-    coupled.plot_runtime_filesystem(plot_file=image_dir+'/coupled_runtime_recent.png', 
+    coupled.plot_runtime_filesystem(
+        plot_file=image_dir+'/coupled_runtime_recent.png', 
         title=ens_label+'Run times per model month since '+ref_date_str,
-        suites=suites_3m, status=True, xios_logs=True, ref_date=ref_date) 
+        suites=suites_3m, ref_date=ref_date, status=True, xios_logs=True) 
 
-    coupled.plot_sypd(plot_file=image_dir+'/coupled_SYPD.png', 
+    coupled.plot_sypd(
+        plot_file=image_dir+'/coupled_SYPD.png', 
         title=ens_label+'SYPD per model month',
-        suites=suites_3m, hlines=np.arange(0.8,2.6,0.4), y_ticks=np.arange(0.8,2.6,0.2),
-        mean=True) 
-    coupled.plot_sypd(plot_file=image_dir+'/coupled_SYPD_recent.png', 
+        suites=suites_3m, mean=True, 
+        y_ticks=np.arange(0.8,2.6,0.2), y_grid=True) 
+    coupled.plot_sypd(
+        plot_file=image_dir+'/coupled_SYPD_recent.png', 
         title=ens_label+'SYPD per model month since '+ref_date_str,
-        suites=suites_3m, hlines=np.arange(0.8,2.6,0.4), y_ticks=np.arange(0.8,2.6,0.2),
-        mean=True, ref_date=ref_date) 
+        suites=suites_3m, ref_date=ref_date, mean=True, 
+        y_ticks=np.arange(0.8,2.6,0.2), y_grid=True) 
 
-    coupled.plot_daily_status(plot_file=image_dir+'/coupled_status.png', 
+    coupled.plot_daily_status(
+        plot_file=image_dir+'/coupled_status.png', 
         title=ens_label+'Model task statuses per day',
-        suites=suites_3m, mean=True, hlines=np.arange(20,110,20))
-    coupled.plot_daily_status(plot_file=image_dir+'/coupled_status_recent.png', 
+        suites=suites_3m, mean=True, y_grid=True)
+    coupled.plot_daily_status(
+        plot_file=image_dir+'/coupled_status_recent.png', 
         title=ens_label+'Model task statuses per day since '+ref_date_str,
-        suites=suites_3m, mean=True, hlines=np.arange(20,110,20), ref_date=ref_date)
+        suites=suites_3m, ref_date=ref_date, mean=True, y_grid=True)
 
     coupled.plot_asypd_sypd_suites(
         plot_file=image_dir+'/asypd_sypd.png', 
@@ -82,7 +90,8 @@ def coupled_data(data_dir='.', plot_dir='.'):
     timestamp_html('coupled_plots.html', data_dir, plot_dir) 
     total_sy_hist = suite_status.data['Completed years'].loc[suites_hist].sum()
     total_sy_ssp = suite_status.data['Completed years'].loc[suites_ssp].sum()
-    populate_html('index.html', data_dir, plot_dir, total_sy_hist, total_sy_ssp, perf_html_hist, perf_html_ssp)
+    populate_html('index.html', data_dir, plot_dir, total_sy_hist, total_sy_ssp, 
+                  perf_html_hist, perf_html_ssp)
     
 def pptransfer_data(data_dir='.', plot_dir='.'): 
     """Generate performance plots for pptransfer jobs."""
@@ -99,14 +108,11 @@ def pptransfer_data(data_dir='.', plot_dir='.'):
     pptransfer.plot_daily_status(
         plot_file=image_dir+'/pptransfer_status.png', 
         title=ens_label+'Transfer task statuses per day', 
-	mean=True, 
-	hlines=[50,100,150,200],
-	y_ticks=np.arange(5,30,5))
+	mean=True, y_ticks=np.arange(5,30,5), y_grid=True)
     pptransfer.plot_speed(
         plot_file=image_dir+'/pptransfer_speed.png', 
 	title=ens_label+'Transfer task speed',
-	mean=True, 
-        hlines=[50,100,150,200])
+	mean=True, y_grid=True)
     timestamp_html('pptransfer_plots.html', data_dir, plot_dir) 
     
 def timestamp_html(template_file, data_dir, plot_dir): 
@@ -147,7 +153,7 @@ def write_file(out_file, contents):
     f.close()
 
 if __name__=='__main__': 
-    data_dir = os.environ.get('DATA_DIR', '/gws/nopw/j04/canari/users/aosprey/log-analysis/data')
+    data_dir = os.environ.get('DATA_DIR', './')
     plot_dir = os.environ.get('PLOT_DIR', './plots')
 
     coupled_data(data_dir=data_dir, plot_dir=plot_dir)
