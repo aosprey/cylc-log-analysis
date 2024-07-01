@@ -34,6 +34,10 @@ def coupled_data(data_dir='.', plot_dir='.'):
     ref_date = pd.Timestamp(now.year, now.month, 1, tz='UTC') - pd.offsets.DateOffset(months=3)
     ref_date_str = ref_date.strftime('%Y-%m-%d')
 
+    total_sy_hist = suite_status.data['Completed years'].loc[suites_hist].sum()
+    total_sy_ssp = suite_status.data['Completed years'].loc[suites_ssp].sum()
+    total_sy_prod = total_sy_hist + total_sy_ssp
+
     coupled.plot_queue_time(
         plot_file=image_dir+'/coupled_queue_time.png', 
         title=ens_label+'Job queue times', 
@@ -76,23 +80,24 @@ def coupled_data(data_dir='.', plot_dir='.'):
         plot_file=image_dir+'/asypd_sypd.png', 
 	title='Run speed on ARCHER2',
         suites=suites_prod)
-	
+
     # HTML
-    perf_csv = plot_dir+'/DATA/suite_perf.csv'
-    coupled.write_suite_stats(csv_file=perf_csv, suites=suites_prod)
-    
     plot_format = '<a href="IMAGES/asypd_sypd_{0}.png">{0}</a>'
     perf_html_hist = plot_dir+'/DATA/suite_perf_hist.html'
     coupled.write_suite_stats(html_file=perf_html_hist, plot_format=plot_format, suites=suites_hist) 
     perf_html_ssp = plot_dir+'/DATA/suite_perf_ssp.html'
     coupled.write_suite_stats(html_file=perf_html_ssp, plot_format=plot_format, suites=suites_ssp) 
     
-    timestamp_html('coupled_plots.html', data_dir, plot_dir) 
-    total_sy_hist = suite_status.data['Completed years'].loc[suites_hist].sum()
-    total_sy_ssp = suite_status.data['Completed years'].loc[suites_ssp].sum()
+    timestamp_html('coupled_plots.html', plot_dir) 
     populate_html('index.html', data_dir, plot_dir, total_sy_hist, total_sy_ssp, 
                   perf_html_hist, perf_html_ssp)
-    
+
+    # Suite stats
+    perf_csv = plot_dir+'/DATA/suite_perf.csv'
+    coupled.write_suite_stats(csv_file=perf_csv, suites=suites_prod)
+    plot_wsypd_canari(perf_csv, plot_file=plot_dir+'/IMAGES/coupled_wsypd.png')
+    timestamp_html('ensemble_plots.html', plot_dir)
+   
 def pptransfer_data(data_dir='.', plot_dir='.'): 
     """Generate performance plots for pptransfer jobs."""
     # Load data 
@@ -113,9 +118,44 @@ def pptransfer_data(data_dir='.', plot_dir='.'):
         plot_file=image_dir+'/pptransfer_speed.png', 
 	title=ens_label+'Transfer task speed',
 	mean=True, y_grid=True)
-    timestamp_html('pptransfer_plots.html', data_dir, plot_dir) 
+    timestamp_html('pptransfer_plots.html', plot_dir) 
+
+def plot_wsypd_canari(stats_file='suite_perf.csv', plot_file='wsypd.png', production_only=True):
+    """ 
+    Plot speeds of ARCHER2 runs
+    To do: Maybe integrate this into cylc_performance? 
+    """
+    plt.rcParams['figure.figsize'] = (8,6)
+
+    data = pd.read_csv(stats_file)
+    date = pd.Timestamp.now().strftime('%Y-%b-%d')
+
+    if production_only:
+        filter = data['Production']==True
+        data = data[filter]
+        extra =  '\n(Production simulations only)'
+#        print(data)
+    else:
+        extra = ''
+        
+    ax=data.plot.scatter('SYPD','ASYPD')
+
+    nyears = int(data['Completed years'].sum())
+    title = f"CANARI speeds as of {date}\n(Red star is average for {nyears} simulated years)" + extra
+    ax.set_title(title)
     
-def timestamp_html(template_file, data_dir, plot_dir): 
+    # get weighted average of speeds (weighted by years per simulation)
+    data['WSYPD'] = data['SYPD']*data['Completed years']
+    data['WASYPD'] = data['ASYPD']*data['Completed years']
+    asypd = data['WASYPD'].sum()/nyears
+    sypd = data['WSYPD'].sum()/nyears
+
+    ax.plot(sypd,asypd,marker='*', color='red',markersize=10)
+
+    plt.savefig(plot_file)
+
+    
+def timestamp_html(template_file, plot_dir): 
     """Add timesamp to html template file."""
     contents = read_file(template_file) 
     now = pd.Timestamp.now()
@@ -128,7 +168,7 @@ def populate_html(template_file, data_dir, plot_dir,
     """
     Generate html based on perf stats and total SY for HIST2 and SSP370 enembles. 
     """
-    timestamp_html(template_file, data_dir, plot_dir)
+    timestamp_html(template_file, plot_dir)
     out_file = plot_dir+'/'+template_file
     contents = read_file(out_file)     
     contents = contents.replace('XX_SY_HIST_XX', str(round(total_sy_hist))) 
