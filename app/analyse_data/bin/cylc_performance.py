@@ -180,6 +180,8 @@ class CylcJobData:
          """Plot 7 day rolling mean."""   
          # Group data by day and reindex, so any days with no data show up as missing data. 
          data = self._filter_jobs(job_filter=job_filter, suites=suites, succeeded_only=succeeded_only)
+         if data.empty:
+             return
          mean_sypd_by_date = data.groupby(data[x_col].dt.date)[y_col].mean()
          dates = pd.date_range(mean_sypd_by_date.index[0], mean_sypd_by_date.index[-1])
          mean_sypd_by_date = mean_sypd_by_date.reindex(dates, fill_value=pd.NA) 
