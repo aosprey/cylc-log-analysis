@@ -495,7 +495,7 @@ class CoupledData(CylcJobData):
             plot.save(plot_file_suite)  
                 
     def plot_quantity_filesystem(self, plot_file, title, x_col, y_col, x_label, y_label, ms=2,
-                                 mean=False, status=None, ref_date=None, xios_logs=False, suites=None): 
+                                 mean=False, status=None, ref_date=None, xios_logs=False, suites=None, y_grid=False): 
         """Plot quantity, split up by file system and optionally whether XIOS writing logs."""
         if ref_date is not None:
             date_filter = self.data['Init time'] > ref_date
@@ -529,25 +529,26 @@ class CoupledData(CylcJobData):
             self._plot_rolling_mean(plot.ax, x_col, y_col, job_filter=date_filter, suites=suites, succeeded_only=True) 
             legend_cols += 1
  
-        plot.annotate(x_label, y_label, title, legend_above=True, legend_cols=legend_cols, legend_rows=legend_rows) 
+        plot.annotate(x_label, y_label, title, y_grid=y_grid, 
+                      legend_above=True, legend_cols=legend_cols, legend_rows=legend_rows) 
         plt.savefig(plot_file)
 	
     def plot_runtime_filesystem(self, plot_file, title, ms=2, ref_date=None, 
-                                status=False, xios_logs=False, suites=None):
+                                status=False, xios_logs=False, suites=None, y_grid=False):
         """Plot runtime per job, split by file system. 
            Options to plot whether XIOS logs off, and plot success and failures."""
         self.plot_quantity_filesystem(plot_file=plot_file, title=title, 
                                       x_col='Init time', y_col='Elapsed time (h)',
 				      x_label='Job start time', y_label='Time to completion (h)',
-                                      ms=ms, ref_date=ref_date, status=status, xios_logs=xios_logs, suites=suites)
+                                      ms=ms, ref_date=ref_date, status=status, xios_logs=xios_logs, suites=suites, y_grid=y_grid)
 	
     def plot_sypd_filesystem(self, plot_file, title, ms=2, ref_date=None, 
-                              mean=False, xios_logs=False, suites=None):
+                              mean=False, xios_logs=False, suites=None, y_grid=False):
         """Plot SYPD per job, split by file system. 
            Options to plot whether XIOS logs off, and plot rolling mean."""
         self.plot_quantity_filesystem(plot_file=plot_file, title=title, 
                                       x_col='Init time', y_col='SYPD', x_label='Job start time', y_label='SYPD',
-                                      ms=ms, ref_date=ref_date, mean=mean, xios_logs=xios_logs, suites=suites)	
+                                      ms=ms, ref_date=ref_date, mean=mean, xios_logs=xios_logs, suites=suites, y_grid=y_grid)	
 
 
 class PPTransferData(CylcJobData): 
