@@ -1,0 +1,200 @@
+#!/usr/bin/env python
+
+import pandas as pd
+import numpy as np
+import os
+from cylc_performance import *
+
+def coupled_data(data_dir='.', plot_dir='.'):
+    """Generate performance plots and suite stats for coupled jobs"""
+    # Load data 
+    suite_status = SuiteStatus(data_dir+'/suite_status.csv')     
+    coupled = CoupledData(data_dir+'/coupled_jobs.csv', suite_status)
+
+    # Performance stats
+    coupled.set_filesystem() 
+    coupled.set_xios_logs()
+    coupled.reset_errors()
+    coupled.calc_metrics()
+    coupled.write(data_dir+'/coupled_jobs_plus.csv')
+    coupled.calc_suite_stats()
+
+    # Filters
+    suites_3m = suite_status.data[suite_status.data['Cycle length (days)'] == 90].index
+    suites_prod = suite_status.data[suite_status.data['Production']].index
+    suites_hist = suite_status.data[suite_status.data['Description'].str.contains('HIST2') &
+                                    suite_status.data['Production']].index
+    suites_ssp = suite_status.data[suite_status.data['Description'].str.contains('SSP370') &
+                                   suite_status.data['Production']].index    
+
+    # Plots 
+    image_dir = plot_dir+'/IMAGES'
+    ens_label = 'CANARI LE on ARCHER2: '
+    now = pd.Timestamp.now()
+    ref_date = pd.Timestamp(now.year, now.month, 1, tz='UTC') - pd.offsets.DateOffset(months=3)
+    ref_date_str = ref_date.strftime('%Y-%m-%d')
+
+    total_sy_hist = suite_status.data['Completed years'].loc[suites_hist].sum()
+    total_sy_ssp = suite_status.data['Completed years'].loc[suites_ssp].sum()
+    total_sy_prod = total_sy_hist + total_sy_ssp
+
+    coupled.plot_queue_time(
+        plot_file=image_dir+'/coupled_queue_time.png', 
+        title=ens_label+'Job queue times', 
+        suites=suites_3m, mean=True, y_grid=True)
+    coupled.plot_queue_time(
+        plot_file=image_dir+'/coupled_queue_time_recent.png', 
+        title=ens_label+'Job queue times since '+ref_date_str, 
+        suites=suites_3m, ref_date=ref_date, mean=True, y_grid=True)
+
+    coupled.plot_runtime_filesystem(
+        plot_file=image_dir+'/coupled_runtime.png', 
+        title=ens_label+'Run times per model month',
+        suites=suites_3m, status=True, xios_logs=True) 
+    coupled.plot_runtime_filesystem(
+        plot_file=image_dir+'/coupled_runtime_recent.png', 
+        title=ens_label+'Run times per model month since '+ref_date_str,
+        suites=suites_3m, ref_date=ref_date, status=True, xios_logs=True) 
+
+    coupled.plot_sypd(
+        plot_file=image_dir+'/coupled_SYPD.png', 
+        title=ens_label+'SYPD per model month',
+        suites=suites_3m, mean=True, 
+        y_ticks=np.arange(0.8,2.6,0.2), y_grid=True) 
+    coupled.plot_sypd(
+        plot_file=image_dir+'/coupled_SYPD_recent.png', 
+        title=ens_label+'SYPD per model month since '+ref_date_str,
+        suites=suites_3m, ref_date=ref_date, mean=True, 
+        y_ticks=np.arange(0.8,2.6,0.2), y_grid=True) 
+
+    coupled.plot_daily_status(
+        plot_file=image_dir+'/coupled_status.png', 
+        title=ens_label+'Model task statuses per day',
+        suites=suites_3m, mean=True, y_grid=True)
+    coupled.plot_daily_status(
+        plot_file=image_dir+'/coupled_status_recent.png', 
+        title=ens_label+'Model task statuses per day since '+ref_date_str,
+        suites=suites_3m, ref_date=ref_date, mean=True, y_grid=True)
+
+    coupled.plot_asypd_sypd_suites(
+        plot_file=image_dir+'/asypd_sypd.png', 
+	title='Run speed on ARCHER2',
+        suites=suites_prod)
+
+    # HTML
+    plot_format = '<a href="IMAGES/asypd_sypd_{0}.png">{0}</a>'
+    perf_html_hist = plot_dir+'/DATA/suite_perf_hist.html'
+    coupled.write_suite_stats(html_file=perf_html_hist, plot_format=plot_format, suites=suites_hist) 
+    perf_html_ssp = plot_dir+'/DATA/suite_perf_ssp.html'
+    coupled.write_suite_stats(html_file=perf_html_ssp, plot_format=plot_format, suites=suites_ssp) 
+    
+    timestamp_html('coupled_plots.html', plot_dir) 
+    populate_html('index.html', data_dir, plot_dir, total_sy_hist, total_sy_ssp, 
+                  perf_html_hist, perf_html_ssp)
+
+    # Suite stats
+    perf_csv = plot_dir+'/DATA/suite_perf.csv'
+    coupled.write_suite_stats(csv_file=perf_csv, suites=suites_prod)
+    plot_wsypd_canari(perf_csv, plot_file=plot_dir+'/IMAGES/coupled_wsypd.png')
+    timestamp_html('ensemble_plots.html', plot_dir)
+   
+def pptransfer_data(data_dir='.', plot_dir='.'): 
+    """Generate performance plots for pptransfer jobs."""
+    # Load data 
+    suite_status = SuiteStatus(data_dir+'/suite_status.csv')     
+    pptransfer = PPTransferData(data_dir+'/pptransfer_jobs.csv', suite_status) 
+
+    # Calculate metrics 
+    pptransfer.calc_metrics()
+
+    # Plots
+    image_dir = plot_dir+'/IMAGES'
+    ens_label = 'CANARI LE on ARCHER2: '
+    pptransfer.plot_daily_status(
+        plot_file=image_dir+'/pptransfer_status.png', 
+        title=ens_label+'Transfer task statuses per day', 
+	mean=True, y_ticks=np.arange(5,30,5), y_grid=True)
+    pptransfer.plot_speed(
+        plot_file=image_dir+'/pptransfer_speed.png', 
+	title=ens_label+'Transfer task speed',
+	mean=True, y_grid=True)
+    timestamp_html('pptransfer_plots.html', plot_dir) 
+
+def plot_wsypd_canari(stats_file='suite_perf.csv', plot_file='wsypd.png', production_only=True):
+    """ 
+    Plot speeds of ARCHER2 runs
+    To do: Maybe integrate this into cylc_performance? 
+    """
+    plt.rcParams['figure.figsize'] = (8,6)
+
+    data = pd.read_csv(stats_file)
+    date = pd.Timestamp.now().strftime('%Y-%b-%d')
+
+    if production_only:
+        filter = data['Production']==True
+        data = data[filter]
+        extra =  '\n(Production simulations only)'
+#        print(data)
+    else:
+        extra = ''
+        
+    ax=data.plot.scatter('SYPD','ASYPD')
+
+    nyears = int(data['Completed years'].sum())
+    title = f"CANARI speeds as of {date}\n(Red star is average for {nyears} simulated years)" + extra
+    ax.set_title(title)
+    
+    # get weighted average of speeds (weighted by years per simulation)
+    data['WSYPD'] = data['SYPD']*data['Completed years']
+    data['WASYPD'] = data['ASYPD']*data['Completed years']
+    asypd = data['WASYPD'].sum()/nyears
+    sypd = data['WSYPD'].sum()/nyears
+
+    ax.plot(sypd,asypd,marker='*', color='red',markersize=10)
+
+    plt.savefig(plot_file)
+
+    
+def timestamp_html(template_file, plot_dir): 
+    """Add timesamp to html template file."""
+    contents = read_file(template_file) 
+    now = pd.Timestamp.now()
+    now_str = now.strftime('%Y-%m-%d %H:%M:%S')
+    contents = contents.replace('XX_DATE_XX', now_str) 
+    write_file(plot_dir+'/'+template_file, contents) 
+    
+def populate_html(template_file, data_dir, plot_dir, 
+                  total_sy_hist, total_sy_ssp, perf_file_hist, perf_file_ssp): 
+    """
+    Generate html based on perf stats and total SY for HIST2 and SSP370 enembles. 
+    """
+    timestamp_html(template_file, plot_dir)
+    out_file = plot_dir+'/'+template_file
+    contents = read_file(out_file)     
+    contents = contents.replace('XX_SY_HIST_XX', str(round(total_sy_hist))) 
+    contents = contents.replace('XX_SY_SSP_XX', str(round(total_sy_ssp))) 
+    table = read_file(perf_file_hist)
+    contents = contents.replace('XX_TABLE_HIST_XX', table) 
+    table = read_file(perf_file_ssp)
+    contents = contents.replace('XX_TABLE_SSP_XX', table) 
+    write_file(out_file, contents)
+
+def read_file(in_file): 
+    """Read file and return contents"""
+    f = open(in_file, 'r')
+    contents = f.read()
+    f.close()
+    return contents     
+
+def write_file(out_file, contents): 
+    """Write contents to file."""   
+    f = open(out_file, 'w') 
+    f.write(contents) 
+    f.close()
+
+if __name__=='__main__': 
+    data_dir = os.environ.get('DATA_DIR', './')
+    plot_dir = os.environ.get('PLOT_DIR', './plots')
+
+    coupled_data(data_dir=data_dir, plot_dir=plot_dir)
+    pptransfer_data(data_dir=data_dir, plot_dir=plot_dir)
