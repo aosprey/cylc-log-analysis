@@ -5,24 +5,25 @@
    UTC mode = True
 
 [scheduling]
-	#initial cycle point = next(T02) # start from 2am tonight
-	initial cycle point = previous(T02) # start from 2am last night
+	#initial cycle point = next(T00) # start from midnight tonight
+	initial cycle point = previous(T00) # start from midnight last night
         runahead limit = P10D
         
     [[graph]]
 {% if TEST %}
-#        R1 = """
-#             check_logs => analyse_data
-#             """
-        P1D = """
-              @wall_clock => analyse_data => housekeeping
-              """
+        R1 = """
+	     @wall_clock => archive_logs:finish => 
+             check_logs:fail? => sync_puma2_logs => untar_logs
+             check_logs? | untar_logs => process_logs
+
+             process_logs => concat_logs => analyse_data
+             """
 {% else %}
         PT12H = """
 	        @wall_clock => archive_logs:finish => 
                 check_logs:fail? => sync_puma2_logs => untar_logs => 
 		housekeeping
-		check_logs? => housekeeping
+		check_logs? | untar_logs => housekeeping
                 """
 
 	P1D = """
@@ -50,6 +51,7 @@ export ROSE_VERSION={{ROSE_VERSION}}
         script = {{TASK_RUN_COMMAND}}
         env-script = "eval $(rose task-env)"
         submission retry delays = {{RETRIES}}
+        execution time limit = PT30M
         [[[events]]]
             handlers = notify.py
             handler events = submisison retry, submission failed, submission timeout, retry, failed, timeout
@@ -71,6 +73,7 @@ export ROSE_VERSION={{ROSE_VERSION}}
         pre-script = "module load gct"
         execution retry delays = {{RETRIES}}
         submission retry delays = {{RETRIES}}
+        execution time limit = PT6H
 
     [[check_logs]]
 	inherit = None, LOGS
@@ -79,13 +82,14 @@ export ROSE_VERSION={{ROSE_VERSION}}
     [[sync_puma2_logs]]
 	inherit = None, LOGS
         platform = localhost
+        execution time limit = PT3H
 
     [[untar_logs]]
 	inherit = None, LOGS
         platform = lotus
+        execution time limit = PT3H
 	[[[directives]]]
-            --partition=short-serial 
-	    --time=3:00:00
+            --partition=short-serial
 
 # Log processing
 
@@ -108,7 +112,7 @@ export ROSE_VERSION={{ROSE_VERSION}}
 # Analysis 
 
     [[ANALYSIS]]
-	platform = sci5_bg
+	platform = sci_bg
 	pre-script = "module load jaspy"
         [[[environment]]]
             ROSE_TASK_APP = analyse_data
