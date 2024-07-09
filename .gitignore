@@ -1,9 +1,10 @@
-# Editors
+# Temp files 
 *~
 #*
 *#
 *.swp
 .#*
+_*
 
 # Cylc alert script
 bin/notify.py
