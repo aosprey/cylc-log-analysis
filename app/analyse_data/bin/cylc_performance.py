@@ -1,3 +1,4 @@
+
 """Code for analysing and plotting data from cylc job logs stored in a CSV file.""" 
 
 import os
@@ -460,15 +461,20 @@ class CoupledData(CylcJobData):
                            data_label='SYPD per job', y_ticks=y_ticks, y_grid=y_grid,
                            mean=mean, suites=suites, job_filter=job_filter)
                            
-    def plot_runtime(self, plot_file, title, suites=None, mean=False, y_ticks=None, y_grid=False, status=False):
+    def plot_runtime(self, plot_file, title, suites=None, mean=False, ref_date=None,
+                     y_ticks=None, y_grid=False, status=False):
         """Plot run time. If status specified plot succeeded and failed jobs, otherwise just succeeded ones."""
+        if ref_date is not None: 
+            job_filter = self.data['Init time'] > ref_date
+        else:
+            job_filter = None
         succeeded_only = not status
-        self.plot_quantity(data, plot_file=plot_file, title=title, 
+        self.plot_quantity(plot_file=plot_file, title=title, 
                            x_col='Init time', y_col='Elapsed time (h)', 
                            x_label='Start time', y_label='Time to completion (h)', 
                            data_label='Run time per job', y_ticks=y_ticks, y_grid=y_grid, 
-                           mean=mean, status=status, 
-                           job_filter=job_filter, suites=suites, succeeded_only=true)
+                           mean=mean, status=status,
+                           job_filter=job_filter, suites=suites, succeeded_only=succeeded_only)
                
     def plot_asypd(self, plot_file, title, suites=None, ignore_rows=0, y_ticks=None, y_grid=False): 
         """Plot ASYPD over time for each suite as separate lines. Ignore first X cycles"""
