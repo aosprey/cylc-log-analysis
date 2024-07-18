@@ -14,25 +14,19 @@
         R1 = """
 	     @wall_clock => archive_logs:finish => 
              check_logs:fail? => sync_puma2_logs => untar_logs
-             check_logs? | untar_logs => process_logs
-
-             process_logs => concat_logs => analyse_data
+             check_logs? | untar_logs => process_logs =>
+             concat_logs => analyse_data
              """
 {% else %}
         PT12H = """
 	        @wall_clock => archive_logs:finish => 
-                check_logs:fail? => sync_puma2_logs => untar_logs => 
-		housekeeping
+                check_logs:fail? => sync_puma2_logs => untar_logs
 		check_logs? | untar_logs => housekeeping
                 """
 
 	P1D = """
-	      @wall_clock => archive_logs:finish => 
-              check_logs:fail? => sync_puma2_logs => untar_logs
-              check_logs? | untar_logs => process_logs
-
-              process_logs => concat_logs => analyse_data => 
-	      housekeeping 
+              check_logs? | untar_logs => process_logs =>
+              concat_logs => analyse_data => housekeeping 
 	      """
 {% endif %}
 	     
