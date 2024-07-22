@@ -1,10 +1,14 @@
-Suite id,User,Description,Production,Status,Retrieve logs,Process logs,Cycle length (days),Run length (cycles),First cycle,Final cycle,Start time,File system,First NVMe cycle,XIOS logs,First no log cycle
-u-cs488,annette,HH control-1950 (error),False,Abandoned,False,False,30,155,19500101T0000Z,19621101T0000Z,2023-03-14T15:44:48Z,Work,,True,
-u-cz963,annette,HH highres-future (SSP585),False,Completed,False,False,30,434,20150101T0000Z,20510201T0000Z,2023-09-26T20:07:18Z,Work,,False,20280801T0000Z
-u-cx749,annette,HH control-1950,True,Running,True,True,30,1200,19500101T0000Z,20491201T0000Z,2023-08-24T15:35:34Z,NVMe,19900301T0000Z,False,19710801T0000Z
-u-db658,annette,HH hist-1950,True,Paused,False,False,30,780,19500101T0000Z,20141001T0000Z,2024-02-09T15:43:49Z,NVMe,19590501T0000Z,False,19500101T0000Z
-u-dg290,lrdlrh,HH abrupt 4xCO2 #1,True,Running,True,True,30,360,19500101T0000Z,19841201T0000Z,2024-06-27T11:46:39Z,NVMe,19500101T0000Z,False,19500101T0000Z
-u-cz422,annette,LL control-1950,True,Completed,True,True,360,300,19500101T0000Z,21490101T0000Z,2024-02-19T14:42:37Z,Work,,False,19500101T0000Z
-u-dh424,annette,LL hist-1950,True,Running,True,True,360,65,19500101T0000Z,20140101T0000Z,2024-07-14T12:11:55Z,Work,,False,19500101T0000Z
-u-dg773,lrdlrh,LL abrupt 4xCO2 #1,True,Completed,True,True,360,50,19500101T0000Z,19990101T0000Z,2024-06-05T09:49:36Z,Work,,False,19500101T0000Z
-u-dh773,jrobson,LL abrupt 4xCO2 #2,True,Running,True,True,360,50,19500101T0000Z,19990101T0000Z,2024-07-10T09:47:14Z,Work,,False,19500101T0000Z
+Suite id,User,Description,Production,Status,Retrieve logs,Process logs,Cycle length (days),Run length (cycles),First cycle,Final cycle,File system,First NVMe cycle,XIOS logs,First no log cycle,Cylc 8,Run
+u-cz422,annette,LL control-1950,True,Completed,False,False,360,400,19500101T0000Z,23490101T0000Z,Work,,False,19500101T0000Z,False,
+u-dh424,annette,LL hist-1950 (error),False,Abandoned,False,False,360,64,19500101T0000Z,20130101T0000Z,Work,,False,19500101T0000Z,False,
+u-di500,annette,LL hist-1950,True,Completed,False,False,360,65,19500101T0000Z,20140101T0000Z,Work,,False,19500101T0000Z,True,1
+u-di516,annette,LL hist-1950-noghg,True,Running,True,True,360,65,19500101T0000Z,20140101T0000Z,Work,,False,19500101T0000Z,True,1
+u-dg773,lrdlrh,LL abrupt 4xCO2 #1,True,Completed,False,False,360,50,19500101T0000Z,19990101T0000Z,Work,,False,19500101T0000Z,False,
+u-dh773,jrobson,LL abrupt 4xCO2 #2,True,Completed,False,False,360,50,19500101T0000Z,19990101T0000Z,Work,,False,19500101T0000Z,False,
+u-di233,lrdlrh,LL abrupt 4xCO2 #3,True,Completed,False,False,360,50,19500101T0000Z,19990101T0000Z,Work,,False,19500101T0000Z,False,
+u-cs488,annette,HH control-1950 (error),False,Abandoned,False,False,30,155,19500101T0000Z,19621101T0000Z,Work,,True,,False,
+u-cz963,annette,HH highres-future (SSP585),False,Completed,False,False,30,434,20150101T0000Z,20510201T0000Z,Work,,False,20280801T0000Z,False,
+u-cx749,annette,HH control-1950,True,Running,True,True,30,1200,19500101T0000Z,20491201T0000Z,NVMe,19900301T0000Z,False,19710801T0000Z,False,
+u-db658,annette,HH hist-1950 (no OR),True,Paused,False,False,30,780,19500101T0000Z,20141001T0000Z,NVMe,19590501T0000Z,False,19500101T0000Z,False,
+u-dg290,lrdlrh,HH abrupt 4xCO2 #1,True,Running,True,True,30,360,19500101T0000Z,19841201T0000Z,NVMe,19500101T0000Z,False,19500101T0000Z,False,
+u-di531,jrobson,HH abrupt 4xCO2 #2,True,Running,True,True,30,360,19500101T0000Z,19841201T0000Z,NVMe,19500101T0000Z,False,19500101T0000Z,False,
