@@ -7,8 +7,7 @@ def concat_suite_logs(task, suite_status_file, log_dir, out_file):
     """Generate single log CSV for all suites for a particular task.
     """
     # Read suite info
-    dt_cols = ['First cycle', 'Start time']
-    suite_status = pd.read_csv(suite_status_file, index_col='Suite id', parse_dates=dt_cols)
+    suite_status = pd.read_csv(suite_status_file, index_col='Suite id')
     suites = suite_status.index
 
     # Read logs for all suites 
@@ -21,8 +20,8 @@ def concat_suite_logs(task, suite_status_file, log_dir, out_file):
 def read_logs(log_dir, suites, task): 
     """Read log data for a list of suites and return as single dataframe 
     """
-    dt_cols = ['Cycle', 'Submit time', 'Init time', 'Exit time']
-    types = {'Batch id' : str}
+    dt_cols = ['Submit time', 'Init time', 'Exit time']
+    types = {'Batch id':str, 'Cycle':'period[D]'}
 
     logs_list = []
     for suite in suites:
