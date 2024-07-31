@@ -99,9 +99,9 @@ export ROSE_VERSION={{ROSE_VERSION}}
     [[process_logs]]
         inherit = None, PROCESS
     	platform = lotus
+        execution time limit = PT3H
 	[[[directives]]]
             --partition=short-serial
-	    --time=3:00:00
 
 # Analysis 
 
