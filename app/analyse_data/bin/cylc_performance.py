@@ -27,6 +27,13 @@ label_vals = ['Successful jobs', 'Failed jobs', 'Rolling 7 day mean',
 colors = dict(zip(keys, color_vals))
 labels = dict(zip(keys, label_vals))
 
+def convert_to_period(x):
+    """Convert a date string formatted as YYYYMMDD... to pandas period[D]"""
+    if pd.isnull(x):
+        return pd.NaT
+    else: 
+        return pd.Period(year=int(x[0:4]), month=int(x[4:6]), day=int(x[6:8]), freq='D')
+
 
 class JobPlot:
 
@@ -82,10 +89,12 @@ class SuiteStatus:
     date_format = '%Y-%m-%d %H:%M:%S'
 
     def __init__(self, csv_file): 
-        dt_cols = ['First cycle', 'Start time'] 
-        index_col = 'Suite id'        
-
-        self.data = pd.read_csv(csv_file, index_col=index_col, parse_dates=dt_cols) 
+        index_col = 'Suite id'
+        dt_cols = ['Start time']
+        period_cols = ['First cycle', 'First NVMe cycle', 'First no log cycle']
+        self.data = pd.read_csv(csv_file, index_col=index_col, parse_dates=dt_cols)
+        for col in period_cols: 
+            self.data[col] = self.data[col].apply(convert_to_period)
         self.suites = self.data.index
 	
     def write_csv(self, out_file, cols=None, suites=None): 
@@ -115,8 +124,8 @@ class CylcJobData:
 
     def __init__(self, csv_file, task_name, suite_status): 
         index_col = 'Batch id'
-        dt_cols = ['Cycle', 'Submit time', 'Init time', 'Exit time'] 
-        types = {'Batch id' : str} 
+        dt_cols = ['Submit time', 'Init time', 'Exit time'] 
+        types = {'Batch id':str, 'Cycle':'period[D]'} 
 
         self.data = pd.read_csv(csv_file, index_col=index_col, dtype=types, parse_dates=dt_cols)
         self.task_name = task_name
