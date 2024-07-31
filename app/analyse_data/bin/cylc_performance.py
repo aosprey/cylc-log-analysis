@@ -32,7 +32,7 @@ def convert_to_period(x):
     if pd.isnull(x):
         return pd.NaT
     else: 
-        return pd.Period(year=int(x[0:4]), month=int(x[5:6]), day=int(x[7:8]), freq='D')
+        return pd.Period(year=int(x[0:4]), month=int(x[4:6]), day=int(x[6:8]), freq='D')
 
 
 class JobPlot:
