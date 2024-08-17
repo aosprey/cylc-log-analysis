@@ -1,4 +1,3 @@
-
 """Code for analysing and plotting data from cylc job logs stored in a CSV file.""" 
 
 import os
@@ -23,7 +22,7 @@ label_vals = ['Successful jobs', 'Failed jobs', 'Rolling 7 day mean',
               'Disk + XIOS logs', 'Disk + XIOS logs: succeeded', 'Disk + XIOS logs: failed',
               'Disk', 'Disk: succeeded', 'Disk: failed',
               'NVMe', 'NVMe: succeeded', 'NVMe: failed', 
-	      'SYPD (rolling 7 day mean)', 'ASYPD per cycle (rolling 7 day mean)', 'ASYPD since start']
+	      'SYPD (mean over prev 7 days)', 'ASYPD (prev 7 days)', 'ASYPD since start']
 colors = dict(zip(keys, color_vals))
 labels = dict(zip(keys, label_vals))
 
@@ -178,28 +177,41 @@ class CylcJobData:
             else: 
                 data.plot(ax=ax, x=x_col, y=y_col, style='o', ms=ms, color=colors[key], label=label)
 
-#    def _plot_rolling_mean(self, ax, x_col, y_col, key='mean', job_filter=None, suites=None): 
-#        """Plot 7 day rolling mean."""
-#        data = self._filter_jobs(job_filter, suites)
-#        data = data[[x_col, y_col]].dropna()
-#        data.sort_values(x_col, inplace=True)
-#        rolling_mean = data.rolling('7D', min_periods=10, center=True, on=x_col).mean()
-#        rolling_mean.plot(ax=ax, x=x_col, y=y_col, color=colors[key], label=labels[key])
+    def _calc_rolling_mean(self, x_col, y_col, window='7D', min_periods=10, job_filter=None, center=True, suites=None, succeeded_only=False):
+         """Calc rolling mean. Return as y_col indexed by x_col."""
+         data = self._filter_jobs(job_filter=job_filter, suites=suites, succeeded_only=succeeded_only)
+         data = data[[x_col, y_col]].dropna()
+         if data.empty:
+             return
+         data.sort_values(x_col, inplace=True)
+         rolling = data.rolling(window, min_periods=min_periods, center=center, on=x_col).mean()
+         return rolling.set_index(x_col)
 
-    def _plot_rolling_mean(self, ax, x_col, y_col, key='mean', job_filter=None, suites=None, succeeded_only=False): 
-         """Plot 7 day rolling mean."""   
-         # Group data by day and reindex, so any days with no data show up as missing data. 
+    def _calc_rolling_daily_mean(self, x_col, y_col, window=7, min_periods=3, center=True, 
+                                 job_filter=None, suites=None, succeeded_only=False): 
+         """Plot 7 day rolling mean.
+            Group data by day and reindex, so any days with no data show up as missing data."""
          data = self._filter_jobs(job_filter=job_filter, suites=suites, succeeded_only=succeeded_only)
          if data.empty:
              return
-         mean_sypd_by_date = data.groupby(data[x_col].dt.date)[y_col].mean()
-         dates = pd.date_range(mean_sypd_by_date.index[0], mean_sypd_by_date.index[-1])
-         mean_sypd_by_date = mean_sypd_by_date.reindex(dates, fill_value=pd.NA) 
-         mean_sypd_by_date.index = mean_sypd_by_date.index.tz_localize('UTC')
-         mean_sypd_by_date.index = mean_sypd_by_date.index + DateOffset(hours=12)
-         
-         rolling_mean = mean_sypd_by_date.rolling(7, min_periods=3, center=True).mean()
-         rolling_mean.plot(ax=ax, x=x_col, y=y_col, color=colors[key], label=labels[key])
+         mean_by_date = data.groupby(data[x_col].dt.date)[y_col].mean()
+         dates = pd.date_range(mean_by_date.index[0], mean_by_date.index[-1])
+         mean_by_date = mean_by_date.reindex(dates, fill_value=pd.NA) 
+         mean_by_date.index = mean_by_date.index.tz_localize('UTC')
+         mean_by_date.index = mean_by_date.index + DateOffset(hours=12)
+         return mean_by_date.rolling(window, min_periods=min_periods, center=center).mean()
+
+    def _plot_rolling_mean(self, ax, x_col, y_col, key='mean', center=True, daily_mean=True,
+                           job_filter=None, suites=None, succeeded_only=False): 
+         """Plot 7 day rolling mean."""
+         if daily_mean: 
+             rolling_mean = self._calc_rolling_daily_mean(x_col, y_col, job_filter=job_filter, center=center, 
+                                                          suites=suites, succeeded_only=succeeded_only)
+         else: 
+             rolling_mean = self._calc_rolling_mean(x_col, y_col, job_filter=job_filter, center=center, 
+                                                    suites=suites, succeeded_only=succeeded_only)
+         if rolling_mean is not None: 
+             rolling_mean.plot(ax=ax, x=x_col, y=y_col, color=colors[key], label=labels[key])
 	        
     def plot_quantity(self, plot_file, title, x_col, y_col, x_label, y_label, 
                       data_label='', legend_above=True, y_ticks=None, y_grid=False, 
@@ -317,14 +329,6 @@ class CoupledData(CylcJobData):
         self.__calc_completed_years()
         self.__calc_run_time()
         self.data['ASYPD'] = self.data['Completed years'] / self.data['Run time (days)']
-
-    def __calc_rolling_asypd(self): 
-        """Calculate ASYPD (per cycle) for each job."""
-        self.__calc_cycle_time()
-        for suite in self.suite_status.suites: 
-            jobs = self.__successful_jobs(suite)
-            cycle_months = self.suite_status.data.loc[suite, 'Cycle length (months)']
-            self.data.loc[jobs, 'Cycle ASYPD'] = (cycle_months/12) / (self.data.loc[jobs, 'Cycle time (hours)']/24)
 	 
     def set_filesystem(self):
         """Work out whether jobs ran on spinning disk or nVME."""
@@ -358,7 +362,7 @@ class CoupledData(CylcJobData):
         self.__time_hours()
         self.__calc_sypd()
         self.__calc_asypd()
-        self.__calc_rolling_asypd()
+        self.__calc_cycle_time()
 
     def __progress_stats(self): 
         """Derive run progress stats for each run"""
@@ -493,15 +497,26 @@ class CoupledData(CylcJobData):
                                  y_ticks=y_ticks, y_grid=y_grid, 
                                  job_filter=job_filter, suites=suites, ignore_rows=ignore_rows, succeeded_only=True)
 
+    def _plot_rolling_asypd(self, ax, suite): 
+        rolling_mean = self._calc_rolling_mean('Init time', 'Cycle time (hours)', min_periods=1, center=False, 
+                                               suites=[suite], succeeded_only=True)
+        if rolling_mean is not None:
+            cycle_months = self.suite_status.data.loc[suite, 'Cycle length (months)']
+            rolling_mean['ASYPD'] = (24 * cycle_months/12) / rolling_mean['Cycle time (hours)']
+            rolling_mean.plot(ax=ax, y='ASYPD', color=colors['asypd_cycle'], label=labels['asypd_cycle'])
+
     def plot_asypd_sypd_suites(self, plot_file, title, suites=None, y_ticks=None, y_grid=False): 
-        """Plot SYPD as rolling mean, ASYPD over time and ASYPD per cycle as rolling mean.
+        """Plot SYPD, ASYPD as rolling mean over prev 7 days, and ASYPD since start over time.
 	   Generates one plot per suite.
            Add filename to suite_status for html table."""		
         root, ext = os.path.splitext(plot_file)
-        for suite in self.suite_status.suites: 
+        if suites is None: 
+            suites = self.suite_status.suites
+        for suite in suites: 
             plot = JobPlot()
-            self._plot_rolling_mean(plot.ax, 'Init time', 'SYPD', key='sypd', suites=[suite], succeeded_only=True) 
-            self._plot_rolling_mean(plot.ax, 'Init time', 'Cycle ASYPD', key='asypd_cycle', suites=[suite], succeeded_only=True)
+            self._plot_rolling_mean(plot.ax, 'Init time', 'SYPD', key='sypd', center=False, 
+                                    suites=[suite], succeeded_only=True) 
+            self._plot_rolling_asypd(plot.ax, suite) 
             self._plot_data(plot.ax, 'Init time', 'ASYPD', line=True, key='asypd', suites=[suite], succeeded_only=True)
             title_suite = title + ': ' + self.suite_status.data.loc[suite, 'Description'] + '(' + suite + ')'
             plot.annotate('Job start time', 'SYPD', title, y_ticks=y_ticks, y_grid=y_grid, 
