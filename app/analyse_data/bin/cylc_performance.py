@@ -311,11 +311,16 @@ class CoupledData(CylcJobData):
                                                       self.data.loc[jobs, 'Cycle'].dt.month/12 - start_years)
                 
     def __calc_run_time(self): 
-        """Calculate time taken so far in days for each cycle"""
+        """Calculate time taken so far in days for each cycle. 
+           Take start time as time of first submitted job."""
         for suite in self.suite_status.suites: 
+            data = self._filter_jobs(suites=[suite])
+            if data.empty: 
+                continue 
             jobs = self.__successful_jobs(suite)
-            start_time = self.suite_status.data.loc[suite,'Start time']
-            self.data.loc[jobs,'Run time (days)'] = (self.data.loc[jobs,'Exit time'] - start_time).dt.total_seconds() / 86400.0
+            start_time = data['Submit time'].iloc[0]
+            self.data.loc[jobs,'Run time (days)'] = (self.data.loc[jobs,'Exit time'] 
+                                                    - start_time).dt.total_seconds() / 86400.0
 
     def __calc_cycle_time(self): 
         """Calculate time to complete cycle, starting from completion time of previous cycle."""
