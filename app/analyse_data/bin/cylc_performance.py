@@ -137,7 +137,7 @@ class CylcJobData:
         else:
             self.data.to_csv(out_file)
         
-    def _filter_jobs(self, job_filter=None, job_filter2=None, suites=None, succeeded_only=False, x_col=None): 
+    def _filter_jobs(self, job_filter=None, job_filter2=None, suites=None, succeeded_only=False, drop_duplicates=False, x_col=None): 
         """Filter data based on various optional criteria: 
            generic job filter, list of suites, exit status of succeeded, and a non-null value in x-col for plotting."""
         data = self.data
@@ -149,19 +149,23 @@ class CylcJobData:
             data = data[data['Suite id'].isin(suites)]
         if succeeded_only: 
             data = data[data['Exit status']=='SUCCEEDED']
+        if drop_duplicates: 
+            data = data.drop_duplicates(subset=['Suite id','Cycle'],keep='last')
         if x_col is not None: 
             data = data[data[x_col].notnull()]
         return data
 
     def _plot_data(self, ax, x_col, y_col, ms=2, line=False, key='data', key_fail='fail', data_label=None, 
-                   status=False, job_filter=None, job_filter2=None, suites=None, succeeded_only=False):
+                   status=False, job_filter=None, job_filter2=None, suites=None, succeeded_only=False, 
+                   drop_duplicates=False):
         """Plot data. Default is to use symbols. 
 	   Options: filter data by job and suites,
 	            key in global colors and labels, 
 		    plot by job status (success and failures), 
 		    line plot (not with status)
 		    string for label (not with status)."""
-        data = self._filter_jobs(job_filter=job_filter, job_filter2=job_filter2, suites=suites, x_col=x_col, succeeded_only=succeeded_only)
+        data = self._filter_jobs(job_filter=job_filter, job_filter2=job_filter2, suites=suites, 
+                                 x_col=x_col, succeeded_only=succeeded_only, drop_duplicates=drop_duplicates)
         if status: 
             data[data['Exit status']=='SUCCEEDED'].plot(
             ax=ax, x=x_col, y=y_col, style='o', ms=ms, color=colors[key], label=labels[key])
@@ -287,9 +291,14 @@ class CoupledData(CylcJobData):
         self.data['Queued time (h)'] = self.data['Queued time (s)'] / 3600.0
         self.data['Elapsed time (h)'] = self.data['Elapsed time (s)'] / 3600.0
 
-    def __successful_jobs(self, suite): 
-        """Return boolean list of jobs that completed successfully for suite."""
-        return (self.data['Suite id'] == suite) & (self.data['Exit status'] == 'SUCCEEDED')
+    def __successful_jobs(self, suite, drop_duplicates=False): 
+        """Return boolean list of jobs that completed successfully for suite.
+           Option to drop duplicated cycles."""
+        jobs = (self.data['Suite id'] == suite) & (self.data['Exit status'] == 'SUCCEEDED')
+        if drop_duplicates: 
+             duplicates = self.data[jobs].duplicated(subset='Cycle', keep='last')
+             jobs = jobs & ~duplicates 
+        return jobs
 
     def __calc_sypd(self): 
         """Calculate SYPD for each successful job."""
@@ -301,7 +310,7 @@ class CoupledData(CylcJobData):
     def __calc_completed_years(self): 
         """Calculte length of the run so far in years, for each cycle."""
         for suite in self.suite_status.suites: 
-            jobs = self.__successful_jobs(suite)
+            jobs = self.__successful_jobs(suite, drop_duplicates=True)
             # To do: Catch case where cycle length is not an exact number of months         
             cycle_months = self.suite_status.data.loc[suite,'Cycle length (days)'] / 30 
             self.suite_status.data.loc[suite,'Cycle length (months)'] = cycle_months
@@ -317,7 +326,7 @@ class CoupledData(CylcJobData):
             data = self._filter_jobs(suites=[suite])
             if data.empty: 
                 continue 
-            jobs = self.__successful_jobs(suite)
+            jobs = self.__successful_jobs(suite, drop_duplicates=True)
             start_time = data['Submit time'].iloc[0]
             self.data.loc[jobs,'Run time (days)'] = (self.data.loc[jobs,'Exit time'] 
                                                     - start_time).dt.total_seconds() / 86400.0
@@ -325,7 +334,7 @@ class CoupledData(CylcJobData):
     def __calc_cycle_time(self): 
         """Calculate time to complete cycle, starting from completion time of previous cycle."""
         for suite in self.suite_status.suites:
-            jobs = self.__successful_jobs(suite)
+            jobs = self.__successful_jobs(suite, drop_duplicates=True)
             self.data.loc[jobs, 'Cycle time (hours)'] = (self.data.loc[jobs, 'Exit time'] - 
                                                          self.data.loc[jobs, 'Exit time'].shift()).dt.total_seconds() / 3600.0
       
@@ -500,7 +509,8 @@ class CoupledData(CylcJobData):
                                  x_col='Exit time', y_col='ASYPD', 
                                  x_label='Completion time for coupled job', y_label='ASYPD',
                                  y_ticks=y_ticks, y_grid=y_grid, 
-                                 job_filter=job_filter, suites=suites, ignore_rows=ignore_rows, succeeded_only=True)
+                                 job_filter=job_filter, suites=suites, ignore_rows=ignore_rows, 
+                                 succeeded_only=True, drop_duplicates=True)
 
     def _plot_rolling_asypd(self, ax, suite): 
         rolling_mean = self._calc_rolling_mean('Init time', 'Cycle time (hours)', min_periods=1, center=False, 
@@ -522,7 +532,8 @@ class CoupledData(CylcJobData):
             self._plot_rolling_mean(plot.ax, 'Init time', 'SYPD', key='sypd', center=False, 
                                     suites=[suite], succeeded_only=True) 
             self._plot_rolling_asypd(plot.ax, suite) 
-            self._plot_data(plot.ax, 'Init time', 'ASYPD', line=True, key='asypd', suites=[suite], succeeded_only=True)
+            self._plot_data(plot.ax, 'Init time', 'ASYPD', line=True, key='asypd', suites=[suite],
+                            succeeded_only=True, drop_duplicates=True)
             title_suite = title + ': ' + self.suite_status.data.loc[suite, 'Description'] + '(' + suite + ')'
             plot.annotate('Job start time', 'SYPD', title, y_ticks=y_ticks, y_grid=y_grid, 
                           legend_above=True, legend_cols=3, legend_rows=1)     
