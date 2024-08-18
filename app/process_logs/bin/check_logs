@@ -18,29 +18,32 @@ check_env_vars() {
     echo "Error: Suite status file $SUITE_STATUS does not exist" >&2
     exit 99
   fi
-  echo "Archive dexitir: $ARCHIVE_DIR"
+  echo "Archive dir: $ARCHIVE_DIR"
   echo "Report dir: $REPORT_DIR"
   echo "Report file: $REPORT_FILE"
   echo "Suite status: $SUITE_STATUS"
 } 
 
 # Check if we are archiving logs for this suite.
-# If no logs archived yet just print warning. 
+# If no log archive directory exists just print warning. 
 check_archiving_suite() {
-  if [[ "$CYLC8" == "True" ]]; then
-	echo "Warning: $SUITE is running under Cylc 8" >&2
-    return 1 
-  fi 	
   if [[ "$RETRIEVE_LOGS" == "False" ]]; then 
     return 1
   fi 
-  for dir in $ARCHIVE_DIR/$SUITE/log*; do 
-    if [[ -d $dir ]]; then
-      return
+  if [[ "$CYLC8" == "True" ]]; then
+    if [[ ! -d $ARCHIVE_DIR/$SUITE/run$RUN/log ]]; then 
+      echo "Warning: $ARCHIVE_DIR/$SUITE/run$RUN/log does not exist" >&2
+      return 1 
     fi
-  done
-  echo "Warning: $ARCHIVE_DIR/$SUITE/log* does not exist" >&2
-  return 1 
+  else 
+    for dir in $ARCHIVE_DIR/$SUITE/log*; do 
+      if [[ -d $dir ]]; then
+        return
+      fi
+    done
+    echo "Warning: $ARCHIVE_DIR/$SUITE/log* does not exist" >&2
+    return 1
+  fi
 } 
 
 # Reset variables used in suite checking 
@@ -53,35 +56,49 @@ reset_suite_vars() {
   NUM_MISSING_CYCLES=""
 }
 
-# Get cycles in suite log directory
-# Returns list of unique, sorted, cycle directories. 
-get_actual_cycles() { 
+# Prints listings for Cylc 7 suite job log directories.
+# We should have already check top-level log dir exists
+get_cylc7_job_dirs() {
   local dirs=""
-    
-  if [[ -d $ARCHIVE_DIR/$SUITE ]]; then
-     cd $ARCHIVE_DIR/$SUITE
-			
-     # Look in all log directories 
-     for log in log*; do
-       if [[ -d $log/job ]]; then 
-	 cd $log/job
-	 dirs+=$(\ls)" "
-	 cd ../../
-       fi
-     done
-		
-     # Directories with cycle date format
-     local cycle_dirs=$(echo $dirs | grep -Eo "[0-9]{8}T[0-9]{4}Z")    
-     # Remove duplicates and sort for comparison
-     echo $cycle_dirs | tr ' ' '\n' | sort -u
+  for log in log*; do
+    if [[ -d $log/job ]]; then 
+      cd $log/job
+      dirs+=$(\ls)" "
+      cd ../../
+    fi
+  done
+  echo $dirs
+} 
+
+# Prints listings for Cylc 8 suite log job dir for specified run. 
+# We should have already check top-level log dir exists
+get_cylc8_job_dirs() { 
+  cd run$RUN/log/job
+  ls
+}
+	
+# Get cycles in suite log directory
+# Prints list of unique, sorted, cycle directories. 
+get_actual_cycles() {     
+  cd $ARCHIVE_DIR/$SUITE
+  local dirs=""
+  if [[ "$CYLC8" == "True" ]]; then
+    dirs=$(get_cylc8_job_dirs)
+  else
+    dirs=$(get_cylc7_job_dirs)
   fi
+  
+  # Directories with cycle date format
+  local cycle_dirs=$(echo $dirs | grep -Eo "[0-9]{8}T[0-9]{4}Z")    
+  # Remove duplicates and sort for comparison
+  echo $cycle_dirs | tr ' ' '\n' | sort -u
 }
 
 # *** This method is too slow when we have 100s of cycles***
 # Get cycles that should appear between first and last, given 
 # cycle length. 
 # Note: this uses rose date
-# Returns list of cycles.
+# Prints list of cycles.
 get_ref_cycles_rose() { 
   export ROSE_CYCLING_MODE=360day
   
@@ -98,7 +115,7 @@ get_ref_cycles_rose() {
 
 # Get cycles that should appear between first and last, given 
 # cycle length. Three cases will work: 300d, 90d and 30d cycles. 
-# Returns list of cycles
+# Prints list of cycles
 # Error code 1 if cycle length not supported
 get_ref_cycles() { 
   local start_year=$(echo $START_CYCLE | cut -c1-4)
@@ -126,7 +143,7 @@ get_ref_cycles() {
   done
 } 
 
-# Return number of elements in a list. 
+# Prints number of elements in a list. 
 count_values() { 
   echo $#
 } 
@@ -137,7 +154,7 @@ get_last_value() {
 } 
 
 # Compare list of actual cycles to refernce cycles 
-# Returns values that appear in REF_CYCLES but not ACTUAL_CYCLES
+# Prints values that appear in REF_CYCLES but not ACTUAL_CYCLES
 get_missing_cycles() { 
   comm -23 <(echo "$REF_CYCLES") <(echo "$ACTUAL_CYCLES")
 } 
