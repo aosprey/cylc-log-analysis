@@ -92,7 +92,8 @@ error_report() {
 # Based on suites listed in status CSV.
 # Should use rsync which works well when synching a large number of small files.
 # Try and archive each suite in the list, but keep track of failures.
-# Then exit with success only if no errors occur.
+# Returns:
+#   Error code equal to number of suites that failed to archive.
 main() {
   check_env_vars
   archive_suite_logs
