@@ -24,8 +24,8 @@ check_dirs() {
   if [[ ! -d "$RAW_DIR" ]]; then 
 	mkdir -p $RAW_DIR
   fi
-  if [[ ! -d "$proc_dir" ]]; then
-	mkdir -p $proc_dir
+  if [[ ! -d "$PROC_DIR" ]]; then
+	mkdir -p $PROC_DIR
   fi
 } 
 	
@@ -42,8 +42,8 @@ process_suites() {
       check_dirs || continue
 
       for task in $TASKS; do 
-        cylc_data_raw=$RAW_DIR/$task_cylc.csv
-        cylc_data_proc=$PROC_DIR/$task_cylc.csv
+        cylc_data_raw=$RAW_DIR/${task}_cylc.csv
+        cylc_data_proc=$PROC_DIR/${task}_cylc.csv
 	    get_cylc_times $LOG_DIR $task $cylc_data_raw $INCREMENTAL $cylc8 $run || continue
 	    process_cylc_times $cylc_data_raw $cylc_data_proc
 	  done
