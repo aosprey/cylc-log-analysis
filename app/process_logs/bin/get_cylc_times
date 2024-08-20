@@ -1,24 +1,35 @@
 #!/usr/bin/bash 
 
-# Get the last cycle written in job data CSV.  
-# Prints last valid cycle in file 
-# Returns 1 if none found
-get_last_recorded_cycle() { 
-  # Check file exists 
-  if [[ ! -f $OUT_FILE ]]; then	 
-    return 1
-  fi 
-  # Check contains at least 2 lines
-  local len=$(wc -l $OUT_FILE | cut -f 1 -d ' ') 
-  if (( len < 2 )); then	
-    return 1 
+# Check command line args and set as global variables
+# Should have at least 4 
+parse_args() {
+  if [ $# -lt 4	 ]; then
+    echo "$@"
+    echo "Error: Usage:" \
+         "suite log dir, task name, output CSV file, incremental [,Cylc8, run]" >&2
+    exit 1
   fi 
   
-  # Test last line 
-  check_cycle $len && return 0
-  # Test 2nd to last line 
-  (( len = len-1 ))
-  check_cycle $len || return 1
+  LOG_DIR=$1
+  TASK=$2
+  OUT_FILE=$3
+  INCR=$4
+  CYLC8=$5
+  RUN=$6
+  
+  if [[ ! -d $LOG_DIR ]]; then 
+    echo "Error: Log dir $LOG_DIR does not exist" >&2
+    exit 1
+  fi  
+  if [[ "$INCR" != "True" && "$INCR" != "False" ]]; then 
+    echo "Error: Argument incremental should be True or False" >&2
+    exit 1
+  fi
+  if [[ "$CYLC8" == "True" ]]; then
+    echo "Warning: Suite is run under Cylc 8" >&2
+    echo "Run = $RUN" >&2
+    return 1  
+  fi 
 } 
 
 # Get first element of line N from file, 
@@ -39,10 +50,63 @@ check_cycle() {
   fi 
 } 
 
+# Get the last cycle written in job data CSV.  
+# Prints last valid cycle in file 
+# Returns 1 if none found
+get_last_recorded_cycle() { 
+  # Check file exists 
+  if [[ ! -f $OUT_FILE ]]; then	 
+    return 1
+  fi 
+  # Check contains at least 2 lines
+  local len=$(wc -l $OUT_FILE | cut -f 1 -d ' ') 
+  if (( len < 2 )); then	
+    return 1 
+  fi 
+  
+  # Test last line 
+  check_cycle $len && return 0
+  # Test 2nd to last line 
+  (( len = len-1 ))
+  check_cycle $len || return 1
+}
+
+# Print header for cylc job data CSV file 
+write_data_header(){ 
+  local data_header="Cycle,Rep,Batch id"
+  data_header+=",Submit time,Init time,Exit time,Exit status"  
+  if [[ "$TASK" == "pptransfer" ]]; then
+    data_header+=",Data size (GB)"
+  fi 
+  echo $data_header > $OUT_FILE
+}
+
 # Remove lines from log job data CSV file, starting from START.
 clear_last_cycle(){ 
    sed -i "/^$START/,\$d" $OUT_FILE
 } 
+
+# If output CSV file exists, work out the last recorded cycle, 
+# and delete
+# If file does not exist, write header. 
+prepare_output_file() { 
+  local new_file="False"
+  if [[ "$INCR" == "True" ]]; then     
+    # Try to get last cycle in output file
+    START=$(get_last_recorded_cycle) || new_file="True"  
+    echo "Starting from $START"
+  else 
+    new_file="True"
+  fi 
+  
+  # Either i) Start new log data file 
+  if [[ "$new_file" == "True" ]]; then 
+    write_data_header
+  # Or ii) Remove records from $START as we will re-process these
+  else 
+    clear_last_cycle
+  fi 
+}
 
 # Prints list of cycles in current dir, from start cycle if specified. 
 get_cycles_to_process(){ 
@@ -78,6 +142,17 @@ reset_job_variables(){
 # Get data size for pptransfer tasks
 get_data_size(){ 
   data_size=$(grep -Po 'Total \K.*?(?= Gb of data to transfer)' job.out)
+}
+
+# Print data for cylc job to CSV file 
+write_job_data(){
+  local job_data="$cycle,$rep"
+  job_data+=",$CYLC_BATCH_SYS_JOB_ID,$CYLC_BATCH_SYS_JOB_SUBMIT_TIME"
+  job_data+=",$CYLC_JOB_INIT_TIME,$CYLC_JOB_EXIT_TIME,$CYLC_JOB_EXIT"
+  if [[ "$TASK" == "pptransfer" ]]; then
+    job_data+=",$data_size"
+  fi 
+  echo $job_data >> $OUT_FILE
 } 
 
 # Load vars from job.status file, and write to output file. 
@@ -104,81 +179,6 @@ parse_job_activity(){
  
   write_job_data
 } 
-
-# Print header for cylc job data CSV file 
-write_data_header(){ 
-  local data_header="Cycle,Rep,Batch id"
-  data_header+=",Submit time,Init time,Exit time,Exit status"  
-  if [[ "$TASK" == "pptransfer" ]]; then
-    data_header+=",Data size (GB)"
-  fi 
-  echo $data_header > $OUT_FILE
-}  
-
-# Print data for cylc job to CSV file 
-write_job_data(){
-  local job_data="$cycle,$rep"
-  job_data+=",$CYLC_BATCH_SYS_JOB_ID,$CYLC_BATCH_SYS_JOB_SUBMIT_TIME"
-  job_data+=",$CYLC_JOB_INIT_TIME,$CYLC_JOB_EXIT_TIME,$CYLC_JOB_EXIT"
-  if [[ "$TASK" == "pptransfer" ]]; then
-    job_data+=",$data_size"
-  fi 
-  echo $job_data >> $OUT_FILE
-} 
-
-# Check command line args and set as global variables
-# Should have at least 4 
-parse_args() {
-  if [ $# -lt 4	 ]; then
-    echo "$@"
-    echo "Error: Usage:" \
-         "suite log dir, task name, output CSV file, incremental [,Cylc8, run]" >&2
-    exit 1
-  fi 
-  
-  LOG_DIR=$1
-  TASK=$2
-  OUT_FILE=$3
-  INCR=$4
-  CYLC8=$5
-  RUN=$6
-  
-  if [[ ! -d $LOG_DIR ]]; then 
-    echo "Error: Log dir $LOG_DIR does not exist" >&2
-    exit 1
-  fi  
-  if [[ "$INCR" != "True" && "$INCR" != "False" ]]; then 
-    echo "Error: Argument incremental should be True or False" >&2
-    exit 1
-  fi
-  if [[ "$CYLC8" == "True" ]]; then
-    echo "Warning: Suite is run under Cylc 8" >&2
-    echo "Run = $RUN" >&2
-    return 1  
-  fi 
-} 
-
-# If output CSV file exists, work out the last recorded cycle, 
-# and delete
-# If file does not exist, write header. 
-prepare_output_file() { 
-  local new_file="False"
-  if [[ "$INCR" == "True" ]]; then     
-    # Try to get last cycle in output file
-    START=$(get_last_recorded_cycle) || new_file="True"  
-    echo "Starting from $START"
-  else 
-    new_file="True"
-  fi 
-  
-  # Either i) Start new log data file 
-  if [[ "$new_file" == "True" ]]; then 
-    write_data_header
-  # Or ii) Remove records from $START as we will re-process these
-  else 
-    clear_last_cycle
-  fi 
-}
 
 # Extract info from required cycles in current dir
 process_log_dir() { 
