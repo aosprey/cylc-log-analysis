@@ -41,7 +41,8 @@ process_suites() {
 	  PROC_DIR=$DATA_DIR/processed/$suite
       check_dirs || continue
 
-      for task in $TASKS; do 
+      for task in $TASKS; do
+        echo "Processing $suite $task"
         cylc_data_raw=$RAW_DIR/${task}_cylc.csv
         cylc_data_proc=$PROC_DIR/${task}_cylc.csv
 	    get_cylc_times $LOG_DIR $task $cylc_data_raw $INCREMENTAL $cylc8 $run || continue
