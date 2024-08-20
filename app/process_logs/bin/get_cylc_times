@@ -1,12 +1,8 @@
 #!/usr/bin/bash 
 
-# Get the last cycle written in job data CSV. 
-# Globals used: 
-#   OUT_FILE 
-# Outputs: 
-#   last valid cycle in file 
-# Return: 
-#   1 if none found
+# Get the last cycle written in job data CSV.  
+# Prints last valid cycle in file 
+# Returns 1 if none found
 get_last_recorded_cycle() { 
   # Check file exists 
   if [[ ! -f $OUT_FILE ]]; then	 
@@ -27,14 +23,9 @@ get_last_recorded_cycle() {
 
 # Get first element of line N from file, 
 # and test if it is in the format expected for a cycle. 
-# Globals used: 
-#   OUT_FILE 
-# Inputs: 
-#   line number
-# Outputs: 
-#   cycle from line
-# Return: 
-#   1 if none found
+# Input line number
+# Prints cycle from line
+# Return 1 if none found
 check_cycle() {
   local line=$1
   local pattern='^[0-9]{8}T[0-9]{4}Z$'
@@ -53,11 +44,7 @@ clear_last_cycle(){
    sed -i "/^$START/,\$d" $OUT_FILE
 } 
 
-# Return list of cycles in current dir, from start cycle if specified. 
-# Globals used: 
-#   START
-# Outputs: 
-#   list of cycles 
+# Prints list of cycles in current dir, from start cycle if specified. 
 get_cycles_to_process(){ 
   local run="False"
   
@@ -140,11 +127,12 @@ write_job_data(){
 } 
 
 # Check command line args and set as global variables
+# Should have at least 4 
 parse_args() {
-  if [ $# -ne 4	 ]; then
+  if [ $# -lt 4	 ]; then
     echo "$@"
     echo "Error: Usage:" \
-         "suite log dir, task name, output CSV file, incremental" >&2
+         "suite log dir, task name, output CSV file, incremental [,Cylc8, run]" >&2
     exit 1
   fi 
   
@@ -152,8 +140,10 @@ parse_args() {
   TASK=$2
   OUT_FILE=$3
   INCR=$4
+  CYLC8=$5
+  RUN=$6
   
-  if [ ! -d $LOG_DIR ]; then 
+  if [[ ! -d $LOG_DIR ]]; then 
     echo "Error: Log dir $LOG_DIR does not exist" >&2
     exit 1
   fi  
@@ -161,17 +151,16 @@ parse_args() {
     echo "Error: Argument incremental should be True or False" >&2
     exit 1
   fi
+  if [[ "$CYLC8" == "True" ]]; then
+    echo "Warning: Suite is run under Cylc 8" >&2
+    echo "Run = $RUN" >&2
+    return 1  
+  fi 
 } 
 
 # If output CSV file exists, work out the last recorded cycle, 
 # and delete
 # If file does not exist, write header. 
-# Globals used: 
-#   OUT_FILE
-# Globals modified: 
-#   START
-# Files modified: 
-#   OUT_FILE 
 prepare_output_file() { 
   local new_file="False"
   if [[ "$INCR" == "True" ]]; then     
@@ -189,14 +178,50 @@ prepare_output_file() {
   else 
     clear_last_cycle
   fi 
-} 
+}
+
+# Extract info from required cycles in current dir
+process_log_dir() { 
+  # Work out which files to process
+  local cycles=$(get_cycles_to_process)     
+  for cycle in $cycles; do
+    if [ ! -d $cycle/$TASK ]; then
+      continue
+    fi
+    cd $cycle/$TASK
+
+    # Look at all repeats including failures, ignoring NN
+    for rep in [0-9]*; do
+      cd $rep
+      reset_job_variables
+	
+      # Get data size for pptransfer 
+      if [[ "$TASK" == "pptransfer" ]]; then
+        if [ -f job.out ]; then
+          get_data_size
+        fi
+      fi 
+
+      # Try job.status 
+      if [ -f job.status ]; then			
+        parse_job_status
+
+      # Try job-activity.log
+      elif [ -f job-activity.log ]; then
+        parse_job_activity    
+      else 
+        echo "Warning: $PWD: No job information" >&2
+        cd ../
+        continue
+      fi
+      cd ../
+    done			
+    cd ../../
+  done
+}
 
 # Loop over cycles in log directory (from START), get cylc job data and 
 # write to output file.  
-# Globals used: 
-#   LOG_DIR
-# Files modified: 
-#   OUT_FILE
 report_job_data() { 
   cd $LOG_DIR
   for log in log.*; do
@@ -205,43 +230,7 @@ report_job_data() {
       continue
     fi
     cd $log/job
-
-    # Work out which files to process
-    local cycles=$(get_cycles_to_process)     
-    for cycle in $cycles; do
-      if [ ! -d $cycle/$TASK ]; then
-        continue
-      fi
-      cd $cycle/$TASK
-
-      # Look at all repeats including failures, ignoring NN
-      for rep in [0-9]*; do
-        cd $rep
-        reset_job_variables
-	
-        # Get data size for pptransfer 
-        if [[ "$TASK" == "pptransfer" ]]; then
-          if [ -f job.out ]; then
-            get_data_size
-          fi
-        fi 
-
-        # Try job.status 
-        if [ -f job.status ]; then			
-          parse_job_status
-
-        # Try job-activity.log
-        elif [ -f job-activity.log ]; then
-          parse_job_activity    
-        else 
-          echo "Warning: $PWD: No job information" >&2
-          cd ../
-          continue
-        fi
-        cd ../
-      done			
-      cd ../../
-    done
+    process_log_dir
     cd ../../
   done
 }
@@ -254,9 +243,9 @@ report_job_data() {
 #   batch id, submit time, start time, end time, exit status, and data size 
 #   for pptransfer. 
 main() {
-  parse_args "$@"
+  parse_args "$@" || return 1
   prepare_output_file
-  report_job_data   
+  report_job_data 
 } 
 
 main "$@"

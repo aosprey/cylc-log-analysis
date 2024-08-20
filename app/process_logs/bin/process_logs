@@ -1,58 +1,61 @@
 #!/usr/bin/bash
 set -e
 
-# Extract run times and submit times from cycle logs.
-# Can process all suites, or just suites where we are transferring logs. 
-
-echo "Process all: $PROCESS_ALL"
-echo "Archive dir: $ARCHIVE_DIR"
-echo "Data dir: $DATA_DIR"
-echo "Suite status: $SUITE_STATUS"
-echo "Tasks: $TASKS"
-echo "Process incrementally: $INCREMENTAL"
-
-# Check we can read suite status file
-if [ ! -f $SUITE_STATUS ]; then
+check_env_vars() { 
+  if [[ ! -f $SUITE_STATUS ]]; then
     echo "Error: Can't find suite status file: $SUITE_STATUS"
     exit 1
-fi
+  fi
+  echo "Process all: $PROCESS_ALL"
+  echo "Archive dir: $ARCHIVE_DIR"
+  echo "Data dir: $DATA_DIR"
+  echo "Suite status: $SUITE_STATUS"
+  echo "Tasks: $TASKS"
+  echo "Process incrementally: $INCREMENTAL"
+}
 
-while IFS="," read -r suite process
-do
-    if [[ "$PROCESS_ALL" == "True" || "$process" == "True" ]]
-    then
-	log_dir=$ARCHIVE_DIR/$suite
-	raw_dir=${DATA_DIR}/raw/${suite}
-	proc_dir=${DATA_DIR}/processed/${suite}
-    
-	# Check suite dir exists
-	if [[ ! -d $log_dir ]]
-	then
-            continue
-	fi 
+# Check suite dir exists
+# Make output directories if they do not exist
+check_dirs() { 
+  if [[ ! -d $LOG_DIR ]]; then
+    echo "Error: $LOG_DIR does not exist" >&2
+	return 1 
+  fi	  
+  if [[ ! -d "$RAW_DIR" ]]; then 
+	mkdir -p $RAW_DIR
+  fi
+  if [[ ! -d "$proc_dir" ]]; then
+	mkdir -p $proc_dir
+  fi
+} 
+	
+# Loop over all suites in status file, where processing required.
+# Loop over all log dirs for specified tasks, and extract Cylc data.
+# Then process into format for analysis.
+# May be done incrementally where only newest job logs read. 
+process_suites() { 
+  while IFS="," read -r suite process cylc8 run; do 
+    if [[ "$PROCESS_ALL" == "True" || "$process" == "True" ]]; then
+	  LOG_DIR=$ARCHIVE_DIR/$suite
+	  RAW_DIR=$DATA_DIR/raw/$suite
+	  PROC_DIR=$DATA_DIR/processed/$suite
+      check_dirs || continue
 
-	# Make output directories if they do not exist	  
-	if [[ ! -d "$raw_dir" ]]; 
-	then 
-	    mkdir -p $raw_dir
-	fi
-
-	if [[ ! -d "$proc_dir" ]]
-	then
-	    mkdir -p $proc_dir
-	fi
-
-        for task in $TASKS
-        do   
-	    echo "Processing $suite $task" 
-
-            cylc_data_raw=${raw_dir}/${task}_cylc.csv
-            cylc_data_proc=${proc_dir}/${task}_cylc.csv
-
-	    get_cylc_times $log_dir $task $cylc_data_raw $INCREMENTAL
+      for task in $TASKS; do 
+        cylc_data_raw=$RAW_DIR/$task_cylc.csv
+        cylc_data_proc=$PROC_DIR/$task_cylc.csv
+	    get_cylc_times $LOG_DIR $task $cylc_data_raw $INCREMENTAL $cylc8 $run || continue
 	    process_cylc_times $cylc_data_raw $cylc_data_proc
-	done
-
+	  done
     fi
-done < <(cut -d "," -f1,7 $SUITE_STATUS | tail -n +2) 
+  done < <(cut -d "," -f1,7,16,17 $SUITE_STATUS | tail -n +2) 
+}
+  
+# Extract run times and submit times from cycle logs.
+# Can process all suites, or just suites where we are transferring logs. 
+main(){
+  check_env_vars 
+  process_suites 
+} 
 
+main "$@"
