@@ -25,6 +25,9 @@ def main():
     logs = pd.read_csv(args.input_file, index_col='Batch id',
                        dtype=types, parse_dates=dt_cols)
 
+    # Convert Submit time to UTC
+    logs['Submit time'] = logs['Submit time'].dt.tz_convert('UTC')
+
     # Check there is data in the file 
     if len(logs.index) > 0: 
 
