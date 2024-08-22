@@ -1,34 +1,64 @@
-#!/bin/bash 
+#!/usr/bin/bash
 set -e
 
-# Untar job logs copied over from puma2, and delete the tar file.
-# To do: exit with 0 if no missing files.
+# To do: add in some checking here 
+check_env_vars() { 
+  echo "Archive dir: $ARCHIVE_DIR"
+  echo "Report dir: $REPORT_DIR"
+  echo "Suite status: $SUITE_STATUS"
+} 
 
-echo "Archive dir: $ARCHIVE_DIR"
-echo "Report dir: $REPORT_DIR"
+# Work out suite-id and whether Cylc 8 from status CSV file
+get_suite_details() {
+  cd $CYLC_TASK_WORK_DIR
+  SUITE=$(echo $LIST | cut -c1-7)
+  CYLC8=$(grep $SUITE $SUITE_STATUS | cut -d',' -f16)
+  RUN=$(grep $SUITE $SUITE_STATUS | cut -d',' -f17)
+}
 
-cd $REPORT_DIR
-
-for file in u-*.txt
-do
-    echo $file
-    suite=$(echo $file | cut -c1-7)
-    echo "Extracting $suite logs"
-    cd $ARCHIVE_DIR/$suite
-
+# Untar all files in suite log directory
+untar_logs() {
+  echo "Extracting $SUITE logs"
+  cd $ARCHIVE_DIR/$SUITE
+	
+  if [[ "$CYLC8" == "True" ]]; then
+    local logdir=run$RUN/log 
+  else 
     # Just put logs in latest dir if more than one exists
-    logdir=$(ls | grep log | tail -n1) 
-   
-    mv job* $logdir 
-    cd $logdir 
-    for file in job*tar.gz 
-    do 
-	echo "Extracting $file"
-        tar -zxf $file
-	rm $file
-    done
+    local logdir=$(ls | grep log | tail -n1)
+  fi 
 
-done
+  mv job* $logdir 
+  cd $logdir 
+  for file in job*tar.gz; do 
+	echo "Extracting $file"
+    tar -zxf $file
+	rm $file
+  done
+}
+
+# Loop over suites with missing cycles,
+# and extract all job*tar.gz
+extract_job_logs() {
+  cd $REPORT_DIR
+  lists=$(ls u*missing.txt)
+  for LIST in $lists
+  do
+	get_suite_details
+	untar_logs 
+  done
+} 
 
 # Clean up
-rm $REPORT_DIR/*missing*.txt 
+cleanup() { 
+  rm $REPORT_DIR/*missing*.txt 
+} 
+
+# Untar job logs copied over from puma2, and delete the tar file.
+main() {
+  check_env_vars 
+  extract_job_logs
+  cleanup
+}
+
+main "$@"

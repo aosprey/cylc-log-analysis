@@ -5,8 +5,6 @@
 #        Do we need set -e? 
 
 # Check required env vars are set correctly
-# Globals used: 
-#   SUITE_STATUS, ARCHIVE_DIR, REPORT_DIR, REPORT_FILE 
 check_env_vars() { 
   if [[ ! -d $ARCHIVE_DIR ]]; then 
     echo "Error: Archive dir $ARCHIVE_DIR does not exist" >&2
@@ -20,27 +18,32 @@ check_env_vars() {
     echo "Error: Suite status file $SUITE_STATUS does not exist" >&2
     exit 99
   fi
-  echo "Archive dexitir: $ARCHIVE_DIR"
+  echo "Archive dir: $ARCHIVE_DIR"
   echo "Report dir: $REPORT_DIR"
   echo "Report file: $REPORT_FILE"
   echo "Suite status: $SUITE_STATUS"
 } 
 
-# Check if we have started archiving logs for this suite. 
-# Globals used: 
-#   ARCHIVE_DIR, STATUS, SUITE 
-# Returns: 
-#   0 if suite is being achived; 1 otherwise
-check_archiving_suite() { 
-  if [[ "$STATUS" == "Preparing" ]]; then 
+# Check if we are archiving logs for this suite.
+# If no log archive directory exists just print warning. 
+check_archiving_suite() {
+  if [[ "$RETRIEVE_LOGS" == "False" ]]; then 
     return 1
   fi 
-  for dir in $ARCHIVE_DIR/$SUITE/log*; do 
-    if [[ -d $dir ]]; then 
-      return
+  if [[ "$CYLC8" == "True" ]]; then
+    if [[ ! -d $ARCHIVE_DIR/$SUITE/run$RUN/log ]]; then 
+      echo "Warning: $ARCHIVE_DIR/$SUITE/run$RUN/log does not exist" >&2
+      return 1 
     fi
-  done
-  return 1 
+  else 
+    for dir in $ARCHIVE_DIR/$SUITE/log*; do 
+      if [[ -d $dir ]]; then
+        return
+      fi
+    done
+    echo "Warning: $ARCHIVE_DIR/$SUITE/log* does not exist" >&2
+    return 1
+  fi
 } 
 
 # Reset variables used in suite checking 
@@ -53,41 +56,49 @@ reset_suite_vars() {
   NUM_MISSING_CYCLES=""
 }
 
-# Get cycles in suite log directory
-# Globals used:
-#   ARCHIVE_DIR, SUITE
-# Return: 
-#   List of unique, sorted, cycle directories. 
-get_actual_cycles() { 
+# Prints listings for Cylc 7 suite job log directories.
+# We should have already check top-level log dir exists
+get_cylc7_job_dirs() {
   local dirs=""
-    
-  if [[ -d $ARCHIVE_DIR/$SUITE ]]; then
-     cd $ARCHIVE_DIR/$SUITE
-			
-     # Look in all log directories 
-     for log in log*; do
-       if [[ -d $log/job ]]; then 
-	 cd $log/job
-	 dirs+=$(\ls)" "
-	 cd ../../
-       fi
-     done
-		
-     # Directories with cycle date format
-     local cycle_dirs=$(echo $dirs | grep -Eo "[0-9]{8}T[0-9]{4}Z")    
-     # Remove duplicates and sort for comparison
-     echo $cycle_dirs | tr ' ' '\n' | sort -u
+  for log in log*; do
+    if [[ -d $log/job ]]; then 
+      cd $log/job
+      dirs+=$(\ls)" "
+      cd ../../
+    fi
+  done
+  echo $dirs
+} 
+
+# Prints listings for Cylc 8 suite log job dir for specified run. 
+# We should have already check top-level log dir exists
+get_cylc8_job_dirs() { 
+  cd run$RUN/log/job
+  ls
+}
+	
+# Get cycles in suite log directory
+# Prints list of unique, sorted, cycle directories. 
+get_actual_cycles() {     
+  cd $ARCHIVE_DIR/$SUITE
+  local dirs=""
+  if [[ "$CYLC8" == "True" ]]; then
+    dirs=$(get_cylc8_job_dirs)
+  else
+    dirs=$(get_cylc7_job_dirs)
   fi
+  
+  # Directories with cycle date format
+  local cycle_dirs=$(echo $dirs | grep -Eo "[0-9]{8}T[0-9]{4}Z")    
+  # Remove duplicates and sort for comparison
+  echo $cycle_dirs | tr ' ' '\n' | sort -u
 }
 
 # *** This method is too slow when we have 100s of cycles***
 # Get cycles that should appear between first and last, given 
 # cycle length. 
 # Note: this uses rose date
-# Globals used: 
-#   START_CYCLE, LAST_COMPLETED_CYCLE, CYCLE_LEN
-# Returns: 
-#   List of cycles
+# Prints list of cycles.
 get_ref_cycles_rose() { 
   export ROSE_CYCLING_MODE=360day
   
@@ -104,11 +115,8 @@ get_ref_cycles_rose() {
 
 # Get cycles that should appear between first and last, given 
 # cycle length. Three cases will work: 300d, 90d and 30d cycles. 
-# Globals used: 
-#   START_CYCLE, LAST_COMPLETED_CYCLE, CYCLE_LEN
-# Returns: 
-#   List of cycles
-#   Error code 1 if cycle length  not supported
+# Prints list of cycles
+# Error code 1 if cycle length not supported
 get_ref_cycles() { 
   local start_year=$(echo $START_CYCLE | cut -c1-4)
   local end_year=$(echo $LAST_COMPLETED_CYCLE | cut -c1-4)
@@ -135,7 +143,7 @@ get_ref_cycles() {
   done
 } 
 
-# Return number of elements in a list. 
+# Prints number of elements in a list. 
 count_values() { 
   echo $#
 } 
@@ -146,21 +154,12 @@ get_last_value() {
 } 
 
 # Compare list of actual cycles to refernce cycles 
-# Globals used: 
-#   ACTUAL_CYCLES, REF_CYCLES 
-# Returns: 
-#   Values that appear in REF_CYCLES but not ACTUAL_CYCLES
+# Prints values that appear in REF_CYCLES but not ACTUAL_CYCLES
 get_missing_cycles() { 
   comm -23 <(echo "$REF_CYCLES") <(echo "$ACTUAL_CYCLES")
 } 
 
-# Write the missing cycles to a file. 
-# Globals used:
-#   NUM_MISSING_CYCLE, MISSING_CYCLES, REPORT_DIR, SUITE
-# Globals modified: 
-#   ERR_COUNT
-# Files modified: 
-#   $REPORT_DIR/$suite"_missing.txt"
+# Write the missing cycles to file $REPORT_DIR/$suite"_missing.txt"
 write_missing_cycles() {
   if [[ "$NUM_MISSING_CYCLES" -gt 0 ]]; then
     ((ERR_COUNT+=1))
@@ -169,15 +168,11 @@ write_missing_cycles() {
 } 
 
 # Loop through suites in $SUITE_STATUS file. 
-# Globals used: 
-#   SUITE_STATUS, ARCHIVE_DIR, REPORT_DIR, REPORT_FILE 
-# Files modified: 
-#   $REPORT_DIR/$REPORT_FILE
 check_suite_logs() { 
   ERR_COUNT=0
   
   # Loop through suite status file entries
-  while IFS="," read -r SUITE STATUS CYCLE_LEN RUN_LEN START_CYCLE FINAL_CYCLE; do
+  while IFS="," read -r SUITE STATUS RETRIEVE_LOGS CYCLE_LEN RUN_LEN START_CYCLE FINAL_CYCLE CYLC8 RUN; do
     check_archiving_suite || continue
     echo "Processing $SUITE"
     reset_suite_vars
@@ -195,14 +190,10 @@ check_suite_logs() {
            
     write_missing_cycles 
     write_suite_report
-  done < <(cut -d ',' -f1,5,8-11 $SUITE_STATUS | tail -n +2)
+  done < <(cut -d ',' -f1,5,6,8-11,16,17 $SUITE_STATUS | tail -n +2)
 } 
 
 # Writes report file header
-# Globals used:
-#   REPORT_DIR, REPORT_FILE, ERR_COUNT
-# Files modified: 
-#   $REPORT_DIR/$REPORT_FILE
 write_header() { 
   local header="Suite id,Status,Final cycle,Last completed cycle,"
   header+="Run length (cycles),Num cycle dirs,Missing cycles"
@@ -229,8 +220,6 @@ error_report() {
 # For each suite in status file ($SUITE_STATUS), report number of cycles 
 # archived in $ARCHIVE_DIR and whether there any gaps. 
 # Just checks for cycle directories. Doesn't check task entries. 
-# Globals read: 
-#   SUITE_STATUS, ARCHIVE_DIR, REPORT_DIR, REPORT_FILE
 # Outputs: 
 #   Writes a report file $REPORT_DIR/$REPORT_FILE
 #   If a suite has missing cycles, writes them to a file in $REPORT_DIR

@@ -89,9 +89,8 @@ class SuiteStatus:
 
     def __init__(self, csv_file): 
         index_col = 'Suite id'
-        dt_cols = ['Start time']
         period_cols = ['First cycle', 'First NVMe cycle', 'First no log cycle']
-        self.data = pd.read_csv(csv_file, index_col=index_col, parse_dates=dt_cols)
+        self.data = pd.read_csv(csv_file, index_col=index_col)
         for col in period_cols: 
             self.data[col] = self.data[col].apply(convert_to_period)
         self.suites = self.data.index
