@@ -50,9 +50,15 @@ export ROSE_VERSION={{ROSE_VERSION}}
             handlers = notify.py
             handler events = submisison retry, submission failed, submission timeout, retry, failed, timeout
         [[[environment]]]
-	    ARCHIVE_DIR = {{ARCHIVE_DIR}}
-	    DATA_DIR = {{DATA_DIR}}
+            ARCHIVE_DIR = {{ARCHIVE_DIR}}
+            DATA_DIR = {{DATA_DIR}}
             PLOT_DIR = {{PLOT_DIR}}
+
+    [[LOTUS]]
+        platform = lotus
+        execution time limit = PT3H
+        [[[directives]]]
+            --partition=short-serial
 
 # Log archiving 
 
@@ -62,60 +68,47 @@ export ROSE_VERSION={{ROSE_VERSION}}
 
     # Rsync needs to run on login nodes
     [[archive_logs]]
-	inherit = None, LOGS
-        platform = ln04_bg
+        inherit = None, LOGS
+        platform = ln04
         pre-script = "module load gct"
         execution retry delays = {{RETRIES}}
-        submission retry delays = {{RETRIES}}
         execution time limit = PT6H
 
     [[check_logs]]
-	inherit = None, LOGS
-        platform = sci_bg
+        inherit = None, LOGS
+        platform = sci-vm
 
     [[sync_puma2_logs]]
-	inherit = None, LOGS
+        inherit = None, LOGS
         platform = localhost
         execution time limit = PT3H
 
     [[untar_logs]]
-	inherit = None, LOGS
-        platform = lotus
-        execution time limit = PT3H
-	[[[directives]]]
-            --partition=short-serial
+        inherit = None, LOGS, LOTUS
 
 # Log processing
-
     [[PROCESS]]
-	pre-script = "module load jaspy"
+        pre-script = "module load jaspy"
         [[[environment]]]
-            ROSE_TASK_APP = process_logs    
+            ROSE_TASK_APP = process_logs
 
     [[concat_logs]]
         inherit = None, PROCESS
-	platform = sci_bg
+        platform = sci-vm
 
     [[process_logs]]
-        inherit = None, PROCESS
-    	platform = lotus
-        execution time limit = PT3H
-	[[[directives]]]
-            --partition=short-serial
+        inherit = None, PROCESS, LOTUS
 
 # Analysis 
-
     [[ANALYSIS]]
-	platform = sci_bg
-	pre-script = "module load jaspy"
+        pre-script = "module load jaspy"
         [[[environment]]]
             ROSE_TASK_APP = analyse_data
 
     [[analyse_data]]
-        inherit = None, ANALYSIS
+        inherit = None, ANALYSIS, LOTUS
 
 # Housekeeping
-
     [[housekeeping]] 
-	platform = localhost
+        platform = localhost
 
