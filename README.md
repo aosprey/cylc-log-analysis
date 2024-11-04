@@ -1,6 +1,6 @@
 # cylc-log-analysis
 
-A cylc-8 workflow for asynchronously archiving and analysing cylc job logs from multiple cylc suites/workflows.
+A Cylc 8 workflow for asynchronously archiving and analysing cylc job logs from multiple cylc suites/workflows.
 
 This workflow is set up to analyse the CANARI runs performed on ARCHER2.
 
@@ -9,8 +9,7 @@ This workflow is set up to analyse the CANARI runs performed on ARCHER2.
 The data and plots are all on the JASMIN CANARI GWS.
 * Log files are archived to: `/gws/nopw/j04/canari/users/aosprey/logs`
 * Data extracted from coupled job logs: `/gws/nopw/j04/canari/users/aosprey/log-analysis/data/coupled_jobs.csv`
-* Plots: https://gws-access.jasmin.ac.uk/public/canari/perf_analysis/IMAGES/
-* Performance metrics: https://gws-access.jasmin.ac.uk/public/canari/perf_analysis/DATA/
+* Plots: https://gws-access.jasmin.ac.uk/public/canari/perf_analysis
   
 ## Details
 
@@ -45,13 +44,14 @@ The workflow looks like this:
 
 ### `analyse_data` app
 
-* `plot_coupled`: generate some plots for the coupled tasks over all suites:
-  * queue time
-  * run time
-  * status (how many jobs succeeded and failed each day)
-  * speed (in SYPD) 
-* `performance_stats`: calculate metrics for each suite:
-  * the run progress in simulated years
-  * the speed of the model in simulated years per day (SYPD)
-  * the speed of the workflow as a whole in actual simulated years per day (ASYPD)
-* `plot_wsypd`: plots the weighted SYPD for each suite
+* `plot_coupled`:
+  * generates plots for the coupled tasks over all suites:
+    * queue time
+    * run time
+    * status (how many jobs succeeded and failed each day)
+    * speed (in SYPD)
+  * plots speeds of all suites, plus weighted average
+  * calculate metrics for each suite, and displays in an HTML table:
+    * the run progress in simulated years
+    * the speed of the model in simulated years per day (SYPD)
+    * the speed of the workflow as a whole in actual simulated years per day (ASYPD)
