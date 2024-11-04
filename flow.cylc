@@ -2,46 +2,41 @@
 {% set TASK_RUN_COMMAND = 'rose task-run --verbose' %}
 
 [scheduler]
-   UTC mode = True
+    UTC mode = True
 
 [scheduling]
-	#initial cycle point = next(T00) # start from midnight tonight
-	initial cycle point = previous(T00) # start from midnight last night
-        runahead limit = P10D
-        
+    #initial cycle point = next(T00) # start from midnight tonight
+    initial cycle point = previous(T00) # start from midnight last night
+    runahead limit = P10D
+
     [[graph]]
 {% if TEST %}
         R1 = """
-	     @wall_clock => archive_logs:finish => 
-             check_logs:fail? => sync_puma2_logs => untar_logs
-             check_logs? | untar_logs => process_logs =>
-             concat_logs => analyse_data
-             """
+            @wall_clock => archive_logs:finish =>
+            check_logs:fail? => sync_puma2_logs => untar_logs
+            check_logs? | untar_logs => process_logs =>
+            concat_logs => analyse_data
+        """
 {% else %}
         PT12H = """
-	        @wall_clock => archive_logs:finish => 
-                check_logs:fail? => sync_puma2_logs => untar_logs
-		check_logs? | untar_logs => housekeeping
-                """
+            @wall_clock => archive_logs:finish =>
+            check_logs:fail? => sync_puma2_logs => untar_logs
+            check_logs? | untar_logs => housekeeping
+        """
 
-	P1D = """
-              check_logs? | untar_logs => process_logs =>
-              concat_logs => analyse_data => housekeeping 
-	      """
+        P1D = """
+            check_logs? | untar_logs => process_logs =>
+            concat_logs => analyse_data => housekeeping
+        """
 {% endif %}
-	     
+
     [[special tasks]]
-        clock-expire = LOGS(P1D), PROCESS(P1D), ANALYSIS(P1D), housekeeping(P1D) 
+        clock-expire = LOGS(P1D), PROCESS(P1D), ANALYSIS(P1D), housekeeping(P1D)
 
 [runtime]
 
-# Global settings 
-
+# Global settings
     [[root]]
-       init-script = """
-export CYLC_VERSION={{CYLC_VERSION}}
-export ROSE_VERSION={{ROSE_VERSION}}
-"""
         script = {{TASK_RUN_COMMAND}}
         env-script = "eval $(rose task-env)"
         submission retry delays = {{RETRIES}}
@@ -60,8 +55,7 @@ export ROSE_VERSION={{ROSE_VERSION}}
         [[[directives]]]
             --partition=short-serial
 
-# Log archiving 
-
+# Log archiving
     [[LOGS]]
         [[[environment]]]
             ROSE_TASK_APP = process_logs
@@ -99,7 +93,7 @@ export ROSE_VERSION={{ROSE_VERSION}}
     [[process_logs]]
         inherit = None, PROCESS, LOTUS
 
-# Analysis 
+# Analysis
     [[ANALYSIS]]
         pre-script = "module load jaspy"
         [[[environment]]]
@@ -109,6 +103,5 @@ export ROSE_VERSION={{ROSE_VERSION}}
         inherit = None, ANALYSIS, LOTUS
 
 # Housekeeping
-    [[housekeeping]] 
+    [[housekeeping]]
         platform = localhost
-
