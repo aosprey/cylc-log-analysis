@@ -20,13 +20,13 @@ def main():
     args = parser.parse_args()
 
     # Read data
-    dt_cols = ['Submit time', 'Init time', 'Exit time']
+    dt_cols = ['Init time', 'Exit time']
     types = {'Batch id' : str}
-    logs = pd.read_csv(args.input_file, index_col='Batch id',
-                       dtype=types, parse_dates=dt_cols)
+    logs = pd.read_csv(args.input_file, index_col='Batch id', dtype=types, parse_dates=dt_cols)
 
     # Convert Submit time to UTC
-    logs['Submit time'] = logs['Submit time'].dt.tz_convert('UTC')
+    logs = logs.dropna(subset=['Submit time'])
+    logs['Submit time'] = pd.to_datetime(logs['Submit time'], utc=True)
 
     # Check there is data in the file 
     if len(logs.index) > 0: 
