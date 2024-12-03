@@ -69,7 +69,7 @@ def coupled_data(data_dir='.', plot_dir='.'):
     coupled.plot_daily_status(
         plot_file=image_dir+'/coupled_status_HH.png', 
         title=ens_label+'Model task statuses per day', 
-        suites=suites_HH, mean=True, y_ticks=np.arange(5,25,5), y_grid=True)
+        suites=suites_HH, mean=True, y_ticks=np.arange(5,35,5), y_grid=True)
 
     coupled.plot_asypd_sypd_suites(
         plot_file=image_dir+'/asypd_sypd.png', 
@@ -119,7 +119,7 @@ def pptransfer_data(data_dir='.', plot_dir='.'):
     pptransfer.plot_daily_status(
         plot_file=image_dir+'/pptransfer_status_HH.png', 
         title='EPOC transfer task statuses each day', 
-	suites=suites_HH, mean=True, y_ticks=np.arange(5,30,5), y_grid=True)
+	suites=suites_HH, mean=True, y_grid=True)
     pptransfer.plot_speed(
         plot_file=image_dir+'/pptransfer_speed_HH.png', 
 	title='EPOC speed of successful transfer tasks',
