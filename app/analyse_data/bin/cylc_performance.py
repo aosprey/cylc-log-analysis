@@ -393,28 +393,34 @@ class CoupledData(CylcJobData):
         """Work out when run will completed based on ASYPD for last 7 days."""
         suite_info = self.suite_status.data
         running_suites = suite_info[suite_info['Status'] == 'Running'].index
-        for suite in running_suites:
-            suite_info.loc[suite,'Remaining years'] = suite_info.loc[suite,'Run length (years)'] - suite_info.loc[suite,'Completed years']
-            suite_info.loc[suite, 'Time of latest job'] = suite_info.loc[suite, 'Last job exit time']
-            ref_date = suite_info.loc[suite, 'Time of latest job'] - timedelta(days=7)
-            job_filter = self.data['Exit time'] > ref_date
-            data = self._filter_jobs(job_filter=job_filter, suites=[suite], succeeded_only=True)
-            if data.shape[0] == 0: 
-                print(suite, 'no jobs in last 7 days')
-                suite_info.loc[suite, 'ASYPD (last 7 days)'] = 0
-            else: 
-                start = data['Cycle'].iloc[0]
-                end = data['Cycle'].iloc[-1]
-                cycle_months = suite_info.loc[suite,'Cycle length (months)']
-                start_years = start.year + (start.month - cycle_months)/12
-                completed_years = (end.year + end. month/12) - start_years
+        if running_suites.empty:
+            suite_info['ASYPD (last 7 days)'] = np.nan
+            suite_info['Time of latest job'] = pd.NaT
+            suite_info['Remaining years'] = np.nan
+            suite_info['Predicted end time'] = pd.NaT
+        else: 
+            for suite in running_suites:
+                suite_info.loc[suite,'Remaining years'] = suite_info.loc[suite,'Run length (years)'] - suite_info.loc[suite,'Completed years']
+                suite_info.loc[suite, 'Time of latest job'] = suite_info.loc[suite, 'Last job exit time']
+                ref_date = suite_info.loc[suite, 'Time of latest job'] - timedelta(days=7)
+                job_filter = self.data['Exit time'] > ref_date
+                data = self._filter_jobs(job_filter=job_filter, suites=[suite], succeeded_only=True)
+                if data.shape[0] == 0: 
+                    print(suite, 'no jobs in last 7 days')
+                    suite_info.loc[suite, 'ASYPD (last 7 days)'] = 0
+                else: 
+                    start = data['Cycle'].iloc[0]
+                    end = data['Cycle'].iloc[-1]
+                    cycle_months = suite_info.loc[suite,'Cycle length (months)']
+                    start_years = start.year + (start.month - cycle_months)/12
+                    completed_years = (end.year + end. month/12) - start_years
 
-                start_time = data['Submit time'].iloc[0]
-                end_time = data['Exit time'].iloc[-1]
-                run_time_days = (end_time - start_time).total_seconds() / 86400
-                suite_info.loc[suite, 'ASYPD (last 7 days)'] = completed_years / run_time_days
-                remaining_days = suite_info.loc[suite,'Remaining years'] / suite_info.loc[suite, 'ASYPD (last 7 days)']
-                suite_info.loc[suite,'Predicted end time'] = suite_info.loc[suite,'Time of latest job'] + timedelta(days=remaining_days)
+                    start_time = data['Submit time'].iloc[0]
+                    end_time = data['Exit time'].iloc[-1]
+                    run_time_days = (end_time - start_time).total_seconds() / 86400
+                    suite_info.loc[suite, 'ASYPD (last 7 days)'] = completed_years / run_time_days
+                    remaining_days = suite_info.loc[suite,'Remaining years'] / suite_info.loc[suite, 'ASYPD (last 7 days)']
+                    suite_info.loc[suite,'Predicted end time'] = suite_info.loc[suite,'Time of latest job'] + timedelta(days=remaining_days)
         self.suite_status.data = suite_info
         	    
     def calc_suite_stats(self): 

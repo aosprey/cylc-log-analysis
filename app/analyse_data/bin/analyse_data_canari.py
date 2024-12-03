@@ -113,7 +113,7 @@ def pptransfer_data(data_dir='.', plot_dir='.'):
     pptransfer.plot_daily_status(
         plot_file=image_dir+'/pptransfer_status.png', 
         title=ens_label+'Transfer task statuses per day', 
-	mean=True, y_ticks=np.arange(5,30,5), y_grid=True)
+	mean=True, y_grid=True)
     pptransfer.plot_speed(
         plot_file=image_dir+'/pptransfer_speed.png', 
 	title=ens_label+'Transfer task speed',
