@@ -55,6 +55,9 @@
         [[[directives]]]
             --partition=short-serial
 
+    [[JASMIN]]
+        platform = sci-vm
+
 # Log archiving
     [[LOGS]]
         [[[environment]]]
@@ -64,13 +67,11 @@
     [[archive_logs]]
         inherit = None, LOGS
         platform = ln04
-        pre-script = "module load gct"
         execution retry delays = {{RETRIES}}
         execution time limit = PT6H
 
     [[check_logs]]
-        inherit = None, LOGS
-        platform = sci-vm
+        inherit = None, LOGS, JASMIN
 
     [[sync_puma2_logs]]
         inherit = None, LOGS
@@ -78,29 +79,30 @@
         execution time limit = PT3H
 
     [[untar_logs]]
-        inherit = None, LOGS, LOTUS
+        inherit = None, LOGS, JASMIN
 
 # Log processing
     [[PROCESS]]
+        inherit = JASMIN
         pre-script = "module load jaspy"
         [[[environment]]]
             ROSE_TASK_APP = process_logs
 
     [[concat_logs]]
         inherit = None, PROCESS
-        platform = sci-vm
 
     [[process_logs]]
-        inherit = None, PROCESS, LOTUS
+        inherit = None, PROCESS
 
 # Analysis
     [[ANALYSIS]]
+        inherit = JASMIN
         pre-script = "module load jaspy"
         [[[environment]]]
             ROSE_TASK_APP = analyse_data
 
     [[analyse_data]]
-        inherit = None, ANALYSIS, LOTUS
+        inherit = None, ANALYSIS
 
 # Housekeeping
     [[housekeeping]]
