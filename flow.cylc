@@ -50,10 +50,12 @@
             PLOT_DIR = {{PLOT_DIR}}
 
     [[LOTUS]]
-        platform = lotus
-        execution time limit = PT3H
+        platform = lotus2
+        execution time limit = PT1H
         [[[directives]]]
-            --partition=short-serial
+            --partition=standard
+            --qos=short
+            --account=epoc
 
     [[JASMIN]]
         platform = sci-vm
@@ -66,7 +68,7 @@
     # Rsync needs to run on login nodes
     [[archive_logs]]
         inherit = None, LOGS
-        platform = ln04
+        platform = ln03
         execution retry delays = {{RETRIES}}
         execution time limit = PT6H
 
