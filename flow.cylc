@@ -43,7 +43,7 @@
         execution time limit = PT30M
         [[[events]]]
             handlers = notify.py
-            handler events = submisison retry, submission failed, submission timeout, retry, failed, timeout
+            handler events = submission retry, submission failed, submission timeout, retry, failed
         [[[environment]]]
             ARCHIVE_DIR = {{ARCHIVE_DIR}}
             DATA_DIR = {{DATA_DIR}}
